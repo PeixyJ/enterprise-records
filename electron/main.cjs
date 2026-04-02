@@ -1,4 +1,4 @@
-const { app, BrowserWindow, protocol } = require('electron')
+const { app, BrowserWindow } = require('electron')
 const path = require('path')
 
 let mainWindow
@@ -16,14 +16,11 @@ function createWindow() {
     },
   })
 
-  // In production, load the built files
   if (app.isPackaged) {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   } else {
-    // In development, try to connect to Vite dev server
     const devUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173'
     mainWindow.loadURL(devUrl).catch(() => {
-      // Fallback to built files
       mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
     })
     mainWindow.webContents.openDevTools()
