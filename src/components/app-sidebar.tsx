@@ -44,6 +44,7 @@ const data = {
         { title: "初筛表", url: "/app/screening" },
         { title: "市级表", url: "/app/city" },
         { title: "镇级表", url: "/app/town" },
+        { title: "其他表", url: "/app/other" },
       ],
     },
     {

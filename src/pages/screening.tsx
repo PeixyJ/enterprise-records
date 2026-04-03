@@ -43,6 +43,7 @@ import {
 } from '@tanstack/react-table'
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { DatePicker } from '@/components/date-picker'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -107,6 +108,7 @@ export type ScreeningRecord = {
   isOperating: boolean
   inTownLevel: boolean
   inCityLevel: boolean
+  inOther: boolean
   reportDate: string
   reportCount: number
 }
@@ -177,10 +179,20 @@ function createColumns(onFeedback: (record: ScreeningRecord) => void, onDelete: 
     },
   },
   {
-    header: '正常运营',
+    header: '运营',
     accessorKey: 'isOperating',
     cell: ({ row }) => {
       const val = row.getValue('isOperating') as boolean
+      return val
+        ? <CheckIcon className='size-4 text-green-600' />
+        : <XIcon className='size-4 text-red-500' />
+    },
+  },
+  {
+    header: '市级',
+    accessorKey: 'inCityLevel',
+    cell: ({ row }) => {
+      const val = row.getValue('inCityLevel') as boolean
       return val
         ? <CheckIcon className='size-4 text-green-600' />
         : <XIcon className='size-4 text-red-500' />
@@ -197,10 +209,10 @@ function createColumns(onFeedback: (record: ScreeningRecord) => void, onDelete: 
     },
   },
   {
-    header: '市级',
-    accessorKey: 'inCityLevel',
+    header: '其他',
+    accessorKey: 'inOther',
     cell: ({ row }) => {
-      const val = row.getValue('inCityLevel') as boolean
+      const val = row.getValue('inOther') as boolean
       return val
         ? <CheckIcon className='size-4 text-green-600' />
         : <XIcon className='size-4 text-red-500' />
@@ -235,16 +247,16 @@ function createColumns(onFeedback: (record: ScreeningRecord) => void, onDelete: 
 }
 
 export const demoData: ScreeningRecord[] = [
-  { id: '1', creditCode: '91110105MA01XXXX1A', companyName: '华兴科技有限公司', industry: '信息技术', township: '中关村街道', isAboveScale: true, isOperating: true, inTownLevel: true, inCityLevel: true, reportDate: '2026-03-15', reportCount: 3 },
-  { id: '2', creditCode: '91110102MA02XXXX2B', companyName: '鑫达贸易有限公司', industry: '批发零售', township: '望京街道', isAboveScale: false, isOperating: true, inTownLevel: true, inCityLevel: false, reportDate: '2026-03-18', reportCount: 1 },
-  { id: '3', creditCode: '91110108MA03XXXX3C', companyName: '博远建筑工程公司', industry: '建筑业', township: '亦庄镇', isAboveScale: true, isOperating: true, inTownLevel: true, inCityLevel: true, reportDate: '2026-03-20', reportCount: 5 },
-  { id: '4', creditCode: '91110114MA04XXXX4D', companyName: '绿源环保科技公司', industry: '环保', township: '回龙观镇', isAboveScale: false, isOperating: false, inTownLevel: false, inCityLevel: false, reportDate: '2026-03-22', reportCount: 2 },
-  { id: '5', creditCode: '91110106MA05XXXX5E', companyName: '天宇物流有限公司', industry: '物流运输', township: '马驹桥镇', isAboveScale: true, isOperating: true, inTownLevel: true, inCityLevel: false, reportDate: '2026-03-25', reportCount: 4 },
-  { id: '6', creditCode: '91110112MA06XXXX6F', companyName: '嘉和食品有限公司', industry: '食品加工', township: '西红门镇', isAboveScale: false, isOperating: true, inTownLevel: false, inCityLevel: false, reportDate: '2026-03-26', reportCount: 1 },
-  { id: '7', creditCode: '91110115MA07XXXX7G', companyName: '明辉电子科技公司', industry: '电子制造', township: '上地街道', isAboveScale: true, isOperating: true, inTownLevel: true, inCityLevel: true, reportDate: '2026-03-27', reportCount: 6 },
-  { id: '8', creditCode: '91110113MA08XXXX8H', companyName: '瑞丰农业发展公司', industry: '农业', township: '长阳镇', isAboveScale: false, isOperating: false, inTownLevel: true, inCityLevel: false, reportDate: '2026-03-28', reportCount: 2 },
-  { id: '9', creditCode: '91110114MA09XXXX9J', companyName: '恒达机械制造公司', industry: '机械制造', township: '城关镇', isAboveScale: true, isOperating: true, inTownLevel: true, inCityLevel: true, reportDate: '2026-03-29', reportCount: 3 },
-  { id: '10', creditCode: '91110107MA10XXXXAK', companyName: '新世纪教育培训公司', industry: '教育', township: '天通苑街道', isAboveScale: false, isOperating: true, inTownLevel: false, inCityLevel: false, reportDate: '2026-03-30', reportCount: 1 },
+  { id: '1', creditCode: '91110105MA01XXXX1A', companyName: '华兴科技有限公司', industry: '信息技术', township: '中关村街道', isAboveScale: true, isOperating: true, inTownLevel: true, inCityLevel: true, inOther: false, reportDate: '2026-03-15', reportCount: 3 },
+  { id: '2', creditCode: '91110102MA02XXXX2B', companyName: '鑫达贸易有限公司', industry: '批发零售', township: '望京街道', isAboveScale: false, isOperating: true, inTownLevel: true, inCityLevel: false, inOther: false, reportDate: '2026-03-18', reportCount: 1 },
+  { id: '3', creditCode: '91110108MA03XXXX3C', companyName: '博远建筑工程公司', industry: '建筑业', township: '亦庄镇', isAboveScale: true, isOperating: true, inTownLevel: true, inCityLevel: true, inOther: false, reportDate: '2026-03-20', reportCount: 5 },
+  { id: '4', creditCode: '91110114MA04XXXX4D', companyName: '绿源环保科技公司', industry: '环保', township: '回龙观镇', isAboveScale: false, isOperating: false, inTownLevel: false, inCityLevel: false, inOther: false, reportDate: '2026-03-22', reportCount: 2 },
+  { id: '5', creditCode: '91110106MA05XXXX5E', companyName: '天宇物流有限公司', industry: '物流运输', township: '马驹桥镇', isAboveScale: true, isOperating: true, inTownLevel: true, inCityLevel: false, inOther: false, reportDate: '2026-03-25', reportCount: 4 },
+  { id: '6', creditCode: '91110112MA06XXXX6F', companyName: '嘉和食品有限公司', industry: '食品加工', township: '西红门镇', isAboveScale: false, isOperating: true, inTownLevel: false, inCityLevel: false, inOther: false, reportDate: '2026-03-26', reportCount: 1 },
+  { id: '7', creditCode: '91110115MA07XXXX7G', companyName: '明辉电子科技公司', industry: '电子制造', township: '上地街道', isAboveScale: true, isOperating: true, inTownLevel: true, inCityLevel: true, inOther: false, reportDate: '2026-03-27', reportCount: 6 },
+  { id: '8', creditCode: '91110113MA08XXXX8H', companyName: '瑞丰农业发展公司', industry: '农业', township: '长阳镇', isAboveScale: false, isOperating: false, inTownLevel: true, inCityLevel: false, inOther: false, reportDate: '2026-03-28', reportCount: 2 },
+  { id: '9', creditCode: '91110114MA09XXXX9J', companyName: '恒达机械制造公司', industry: '机械制造', township: '城关镇', isAboveScale: true, isOperating: true, inTownLevel: true, inCityLevel: true, inOther: false, reportDate: '2026-03-29', reportCount: 3 },
+  { id: '10', creditCode: '91110107MA10XXXXAK', companyName: '新世纪教育培训公司', industry: '教育', township: '天通苑街道', isAboveScale: false, isOperating: true, inTownLevel: false, inCityLevel: false, inOther: false, reportDate: '2026-03-30', reportCount: 1 },
 ]
 
 function recalcReportCounts(records: ScreeningRecord[]): ScreeningRecord[] {
@@ -280,7 +292,9 @@ export default function ScreeningPage() {
   }
   const [globalFilter, setGlobalFilter] = useState('')
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-  const [levelFilter, setLevelFilter] = useState<'all' | 'town' | 'city'>('all')
+  const [levelFilter, setLevelFilter] = useState<'all' | 'town' | 'city' | 'other'>('all')
+  const [dateStart, setDateStart] = useState('')
+  const [dateEnd, setDateEnd] = useState('')
   const industries = getIndustries()
   const townships = getTownships()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -290,71 +304,77 @@ export default function ScreeningPage() {
   const [fbIsOperating, setFbIsOperating] = useState(false)
   const [fbInTownLevel, setFbInTownLevel] = useState(false)
   const [fbInCityLevel, setFbInCityLevel] = useState(false)
+  const [fbInOther, setFbInOther] = useState(false)
 
   const handleOpenFeedback = (record: ScreeningRecord) => {
     setFeedbackRecord(record)
     setFbIsOperating(record.isOperating)
     setFbInTownLevel(record.inTownLevel)
     setFbInCityLevel(record.inCityLevel)
+    setFbInOther(record.inOther)
     setFeedbackOpen(true)
   }
 
   const handleSaveFeedback = () => {
-    // TODO: 保存反馈数据
-    console.log('保存反馈:', {
-      id: feedbackRecord?.id,
-      isOperating: fbIsOperating,
-      inTownLevel: fbInTownLevel,
-      inCityLevel: fbInCityLevel,
-    })
+    if (feedbackRecord) {
+      setData(prev => prev.map(r => r.id === feedbackRecord.id ? {
+        ...r,
+        isOperating: fbIsOperating,
+        inTownLevel: fbInTownLevel,
+        inCityLevel: fbInCityLevel,
+        inOther: fbInOther,
+      } : r))
+    }
     setFeedbackOpen(false)
   }
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = e.target.files
+    if (!files || files.length === 0) return
     try {
-      const imported = await importScreeningExcel(file)
-      // 加载已有的详细数据
       const existingDetail: Record<string, unknown> = (() => {
         const s = localStorage.getItem(SCREENING_DETAIL_KEY)
         if (s) try { return JSON.parse(s) } catch { /* */ }
         return {}
       })()
-      const newRecords: ScreeningRecord[] = imported.map((r, i) => {
-        const id = `imp-${Date.now()}-${i}`
-        // 保存详细数据（税务、人社等）到 detail store
-        existingDetail[id] = {
-          tax: r.tax,
-          social: r.social,
-          power: r.power,
-          water: r.water,
-          loan: r.loan,
-          reportSource: r.reportSource,
+      const allNewRecords: ScreeningRecord[] = []
+      for (let f = 0; f < files.length; f++) {
+        const imported = await importScreeningExcel(files[f])
+        for (let i = 0; i < imported.length; i++) {
+          const r = imported[i]
+          const id = `imp-${Date.now()}-${f}-${i}`
+          existingDetail[id] = {
+            tax: r.tax,
+            social: r.social,
+            power: r.power,
+            water: r.water,
+            loan: r.loan,
+            reportSource: r.reportSource,
+          }
+          allNewRecords.push({
+            id,
+            creditCode: r.creditCode,
+            companyName: r.companyName,
+            industry: r.industry,
+            township: r.township,
+            isAboveScale: r.isAboveScale,
+            isOperating: r.feedback.isOperating,
+            inTownLevel: r.feedback.inTownLevel,
+            inCityLevel: r.feedback.inCityLevel,
+            inOther: false,
+            reportDate: r.reportDate,
+            reportCount: r.reportCount,
+          })
         }
-        return {
-          id,
-          creditCode: r.creditCode,
-          companyName: r.companyName,
-          industry: r.industry,
-          township: r.township,
-          isAboveScale: r.isAboveScale,
-          isOperating: r.feedback.isOperating,
-          inTownLevel: r.feedback.inTownLevel,
-          inCityLevel: r.feedback.inCityLevel,
-          reportDate: r.reportDate,
-          reportCount: r.reportCount,
-        }
-      })
+      }
       localStorage.setItem(SCREENING_DETAIL_KEY, JSON.stringify(existingDetail))
-      setData(prev => recalcReportCounts([...newRecords, ...prev]))
-      setImportCount(newRecords.length)
+      setData(prev => recalcReportCounts([...allNewRecords, ...prev]))
+      setImportCount(allNewRecords.length)
       setTimeout(() => setImportCount(null), 3000)
     } catch (err) {
       console.error('导入失败:', err)
       alert('导入失败，请检查文件格式是否正确')
     }
-    // 清空 input 以便再次选择同一文件
     e.target.value = ''
   }
 
@@ -386,11 +406,15 @@ export default function ScreeningPage() {
     pageSize,
   })
 
-  const filteredData = useMemo(() =>
-    levelFilter === 'all' ? data
-    : levelFilter === 'town' ? data.filter(r => r.inTownLevel)
-    : data.filter(r => r.inCityLevel)
-  , [data, levelFilter])
+  const filteredData = useMemo(() => {
+    let result = data
+    if (levelFilter === 'town') result = result.filter(r => r.inTownLevel)
+    else if (levelFilter === 'city') result = result.filter(r => r.inCityLevel)
+    else if (levelFilter === 'other') result = result.filter(r => r.inOther)
+    if (dateStart) result = result.filter(r => r.reportDate >= dateStart)
+    if (dateEnd) result = result.filter(r => r.reportDate <= dateEnd)
+    return result
+  }, [data, levelFilter, dateStart, dateEnd])
 
   const table = useReactTable({
     data: filteredData,
@@ -425,95 +449,105 @@ export default function ScreeningPage() {
   return (
     <div className='w-full'>
       <div className='border-b'>
-        <div className='flex min-h-17 flex-wrap items-center justify-between gap-3 px-6 py-3'>
-          <span className='text-lg font-medium'>初筛表</span>
-          <div className='flex items-center gap-2'>
-            <div className='relative'>
-              <SearchIcon className='text-muted-foreground absolute left-2.5 top-2.5 size-4' />
-              <Input
-                placeholder='搜索企业...'
-                className='pl-8 w-60'
-                value={globalFilter}
-                onChange={e => setGlobalFilter(e.target.value)}
-              />
-            </div>
-            <Select
-              value={(columnFilters.find(f => f.id === 'industry')?.value as string) ?? 'all'}
-              onValueChange={value => {
-                setColumnFilters(prev => {
-                  const next = prev.filter(f => f.id !== 'industry')
-                  if (value !== 'all') next.push({ id: 'industry', value })
-                  return next
-                })
-              }}
-            >
-              <SelectTrigger className='w-36'>
-                <SelectValue placeholder='全部行业' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value='all'>全部行业</SelectItem>
-                {industries.map(item => (
-                  <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={(columnFilters.find(f => f.id === 'township')?.value as string) ?? 'all'}
-              onValueChange={value => {
-                setColumnFilters(prev => {
-                  const next = prev.filter(f => f.id !== 'township')
-                  if (value !== 'all') next.push({ id: 'township', value })
-                  return next
-                })
-              }}
-            >
-              <SelectTrigger className='w-40'>
-                <SelectValue placeholder='全部乡镇' />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value='all'>全部乡镇</SelectItem>
-                {townships.map(item => (
-                  <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={levelFilter} onValueChange={v => setLevelFilter(v as 'all' | 'town' | 'city')}>
-              <SelectTrigger className='w-28'>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value='all'>全部</SelectItem>
-                <SelectItem value='town'>镇级</SelectItem>
-                <SelectItem value='city'>市级</SelectItem>
-              </SelectContent>
-            </Select>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant='ghost' className='text-muted-foreground size-8 rounded-full'>
-                  <EllipsisVerticalIcon />
-                  <span className='sr-only'>菜单</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align='end'>
-                <DropdownMenuGroup>
-                  <DropdownMenuItem onSelect={() => setExportAllOpen(true)}>导出全部</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setExportOpen(true)}>分类导出</DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button variant='ghost' size='icon' className='size-8' onClick={() => window.location.reload()}>
-              <RefreshCwIcon className='size-4' />
-              <span className='sr-only'>刷新</span>
-            </Button>
-            <Button variant='outline' size='sm' onClick={() => setExportAllOpen(true)}>
-              <DownloadIcon className='size-4' />
-              导出
-            </Button>
-            <Button size='sm' onClick={() => fileInputRef.current?.click()}>
-              <UploadIcon className='size-4' />
-              导入
-            </Button>
+        {/* 第一行：筛选条件 */}
+        <div className='flex flex-wrap items-center gap-2 px-6 py-3'>
+          <div className='relative'>
+            <SearchIcon className='text-muted-foreground absolute left-2.5 top-2.5 size-4' />
+            <Input
+              placeholder='搜索企业...'
+              className='pl-8 w-52'
+              value={globalFilter}
+              onChange={e => setGlobalFilter(e.target.value)}
+            />
           </div>
+          <Select
+            value={(columnFilters.find(f => f.id === 'industry')?.value as string) ?? 'all'}
+            onValueChange={value => {
+              setColumnFilters(prev => {
+                const next = prev.filter(f => f.id !== 'industry')
+                if (value !== 'all') next.push({ id: 'industry', value })
+                return next
+              })
+            }}
+          >
+            <SelectTrigger className='w-32'>
+              <SelectValue placeholder='全部行业' />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='all'>全部行业</SelectItem>
+              {industries.map(item => (
+                <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={(columnFilters.find(f => f.id === 'township')?.value as string) ?? 'all'}
+            onValueChange={value => {
+              setColumnFilters(prev => {
+                const next = prev.filter(f => f.id !== 'township')
+                if (value !== 'all') next.push({ id: 'township', value })
+                return next
+              })
+            }}
+          >
+            <SelectTrigger className='w-36'>
+              <SelectValue placeholder='全部乡镇' />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='all'>全部乡镇</SelectItem>
+              {townships.map(item => (
+                <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={levelFilter} onValueChange={v => setLevelFilter(v as 'all' | 'town' | 'city' | 'other')}>
+            <SelectTrigger className='w-24'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value='all'>全部</SelectItem>
+              <SelectItem value='town'>镇级</SelectItem>
+              <SelectItem value='city'>市级</SelectItem>
+              <SelectItem value='other'>其他</SelectItem>
+            </SelectContent>
+          </Select>
+          <DatePicker value={dateStart} onChange={setDateStart} placeholder='开始日期' />
+          <span className='text-muted-foreground text-sm'>至</span>
+          <DatePicker value={dateEnd} onChange={setDateEnd} placeholder='截止日期' />
+          {(dateStart || dateEnd) && (
+            <Button variant='ghost' size='sm' className='text-muted-foreground' onClick={() => { setDateStart(''); setDateEnd('') }}>
+              清除
+            </Button>
+          )}
+        </div>
+        {/* 第二行：操作按钮靠右 */}
+        <div className='flex items-center justify-end gap-2 px-6 pb-3'>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant='ghost' className='text-muted-foreground size-8 rounded-full'>
+                <EllipsisVerticalIcon />
+                <span className='sr-only'>菜单</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end'>
+              <DropdownMenuGroup>
+                <DropdownMenuItem onSelect={() => setExportAllOpen(true)}>导出全部</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setExportOpen(true)}>分类导出</DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button variant='ghost' size='icon' className='size-8' onClick={() => window.location.reload()}>
+            <RefreshCwIcon className='size-4' />
+            <span className='sr-only'>刷新</span>
+          </Button>
+          <Button variant='outline' size='sm' onClick={() => setExportAllOpen(true)}>
+            <DownloadIcon className='size-4' />
+            导出
+          </Button>
+          <Button size='sm' onClick={() => fileInputRef.current?.click()}>
+            <UploadIcon className='size-4' />
+            导入
+          </Button>
         </div>
         <Table>
           <TableHeader>
@@ -663,12 +697,16 @@ export default function ScreeningPage() {
               <Switch id='fb-operating' checked={fbIsOperating} onCheckedChange={setFbIsOperating} />
             </div>
             <div className='flex items-center justify-between'>
+              <Label htmlFor='fb-city'>列入市级</Label>
+              <Switch id='fb-city' checked={fbInCityLevel} onCheckedChange={setFbInCityLevel} />
+            </div>
+            <div className='flex items-center justify-between'>
               <Label htmlFor='fb-town'>列入镇级</Label>
               <Switch id='fb-town' checked={fbInTownLevel} onCheckedChange={setFbInTownLevel} />
             </div>
             <div className='flex items-center justify-between'>
-              <Label htmlFor='fb-city'>列入市级</Label>
-              <Switch id='fb-city' checked={fbInCityLevel} onCheckedChange={setFbInCityLevel} />
+              <Label htmlFor='fb-other'>列入其他</Label>
+              <Switch id='fb-other' checked={fbInOther} onCheckedChange={setFbInOther} />
             </div>
           </div>
           <DialogFooter>
@@ -787,6 +825,7 @@ export default function ScreeningPage() {
         ref={fileInputRef}
         type='file'
         accept='.xlsx,.xls'
+        multiple
         className='hidden'
         onChange={handleImport}
       />

@@ -66,6 +66,7 @@ import { getIndustries, getTownships } from '@/db/dict'
 import { SCREENING_STORAGE_KEY } from '@/db/database'
 import { type ScreeningRecord, demoData, getIndustryIcon } from './screening'
 import { importLevelExcel, exportLevelAll, exportLevelZip, exportLevelQuestionnaire } from '@/lib/excel'
+import { DatePicker } from '@/components/date-picker'
 
 // ── 扩展记录类型 ──────────────────────────────────
 
@@ -85,6 +86,7 @@ export interface LevelRecord {
   coordination: string
   progress: ProgressEntry[]
   status: LevelStatus
+  reportDate: string
 }
 
 export interface ProgressEntry {
@@ -208,7 +210,7 @@ function loadScreeningData(): ScreeningRecord[] {
   return demoData
 }
 
-function toLevelRecords(records: ScreeningRecord[], filterKey: 'inCityLevel' | 'inTownLevel'): LevelRecord[] {
+function toLevelRecords(records: ScreeningRecord[], filterKey: 'inCityLevel' | 'inTownLevel' | 'inOther'): LevelRecord[] {
   return records
     .filter(r => r[filterKey])
     .map(r => {
@@ -218,6 +220,7 @@ function toLevelRecords(records: ScreeningRecord[], filterKey: 'inCityLevel' | '
         industry: r.industry, township: r.township,
         ...extra,
         status: deriveStatus(extra.progress),
+        reportDate: r.reportDate,
       }
     })
 }
@@ -315,7 +318,7 @@ const LEVEL_STORAGE_PREFIX = 'enterprise-records-level-'
 
 export default function LevelTable({ title, filterKey }: {
   title: string
-  filterKey: 'inCityLevel' | 'inTownLevel'
+  filterKey: 'inCityLevel' | 'inTownLevel' | 'inOther'
 }) {
   const pageSize = 8
   const storageKey = LEVEL_STORAGE_PREFIX + filterKey
@@ -339,6 +342,8 @@ export default function LevelTable({ title, filterKey }: {
 
   const [globalFilter, setGlobalFilter] = useState('')
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [dateStart, setDateStart] = useState('')
+  const [dateEnd, setDateEnd] = useState('')
   const industries = getIndustries()
   const townships = getTownships()
 
@@ -368,26 +373,27 @@ export default function LevelTable({ title, filterKey }: {
   }
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = e.target.files
+    if (!files || files.length === 0) return
     try {
-      const imported = await importLevelExcel(file)
       const newExtras = { ...importedExtras }
       let count = 0
-      for (const rec of imported) {
-        // 按信用代码关联，或按企业名称关联
-        const match = baseData.find(r => (rec.creditCode && r.creditCode === rec.creditCode) || r.companyName === rec.companyName)
-        if (match) {
-          newExtras[match.creditCode] = {
-            businessStatus: rec.businessStatus || match.businessStatus,
-            assetStatus: rec.assetStatus || match.assetStatus,
-            debtStatus: rec.debtStatus || match.debtStatus,
-            staffStatus: rec.staffStatus || match.staffStatus,
-            otherFeedback: rec.otherFeedback || match.otherFeedback,
-            coordination: rec.coordination || match.coordination,
-            progress: rec.progress.length > 0 ? rec.progress : match.progress,
+      for (let f = 0; f < files.length; f++) {
+        const imported = await importLevelExcel(files[f])
+        for (const rec of imported) {
+          const match = baseData.find(r => (rec.creditCode && r.creditCode === rec.creditCode) || r.companyName === rec.companyName)
+          if (match) {
+            newExtras[match.creditCode] = {
+              businessStatus: rec.businessStatus || match.businessStatus,
+              assetStatus: rec.assetStatus || match.assetStatus,
+              debtStatus: rec.debtStatus || match.debtStatus,
+              staffStatus: rec.staffStatus || match.staffStatus,
+              otherFeedback: rec.otherFeedback || match.otherFeedback,
+              coordination: rec.coordination || match.coordination,
+              progress: rec.progress.length > 0 ? rec.progress : match.progress,
+            }
+            count++
           }
-          count++
         }
       }
       setImportedExtras(newExtras)
@@ -411,10 +417,17 @@ export default function LevelTable({ title, filterKey }: {
 
   const columns = createColumns(handleViewProgress, handleViewDetail, handleViewCompany)
 
+  const filteredData = useMemo(() => {
+    let result = data
+    if (dateStart) result = result.filter(r => r.reportDate >= dateStart)
+    if (dateEnd) result = result.filter(r => r.reportDate <= dateEnd)
+    return result
+  }, [data, dateStart, dateEnd])
+
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize })
 
   const table = useReactTable({
-    data,
+    data: filteredData,
     columns,
     state: { pagination, globalFilter, columnFilters },
     getCoreRowModel: getCoreRowModel(),
@@ -439,60 +452,67 @@ export default function LevelTable({ title, filterKey }: {
   return (
     <div className='w-full'>
       <div className='border-b'>
-        <div className='flex min-h-17 flex-wrap items-center justify-between gap-3 px-6 py-3'>
-          <span className='text-lg font-medium'>{title}</span>
-          <div className='flex items-center gap-2'>
-            <div className='relative'>
-              <SearchIcon className='text-muted-foreground absolute left-2.5 top-2.5 size-4' />
-              <Input placeholder='搜索企业...' className='pl-8 w-60' value={globalFilter} onChange={e => setGlobalFilter(e.target.value)} />
-            </div>
-            <Select
-              value={(columnFilters.find(f => f.id === 'industry')?.value as string) ?? 'all'}
-              onValueChange={value => { setColumnFilters(prev => { const next = prev.filter(f => f.id !== 'industry'); if (value !== 'all') next.push({ id: 'industry', value }); return next }) }}
-            >
-              <SelectTrigger className='w-36'><SelectValue placeholder='全部行业' /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value='all'>全部行业</SelectItem>
-                {industries.map(item => <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select
-              value={(columnFilters.find(f => f.id === 'township')?.value as string) ?? 'all'}
-              onValueChange={value => { setColumnFilters(prev => { const next = prev.filter(f => f.id !== 'township'); if (value !== 'all') next.push({ id: 'township', value }); return next }) }}
-            >
-              <SelectTrigger className='w-40'><SelectValue placeholder='全部乡镇' /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value='all'>全部乡镇</SelectItem>
-                {townships.map(item => <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant='ghost' className='text-muted-foreground size-8 rounded-full'>
-                  <EllipsisVerticalIcon /><span className='sr-only'>菜单</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align='end'>
-                <DropdownMenuGroup>
-                  <DropdownMenuItem onSelect={() => exportLevelAll(data, title)}>导出全部</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setExportOpen(true)}>分类导出</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => setQuestionnaireOpen(true)}>导出分类问卷</DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button variant='ghost' size='icon' className='size-8' onClick={() => window.location.reload()}>
-              <RefreshCwIcon className='size-4' />
-              <span className='sr-only'>刷新</span>
-            </Button>
-            <Button variant='outline' size='sm' onClick={() => exportLevelAll(data, title)}>
-              <DownloadIcon className='size-4' />
-              导出
-            </Button>
-            <Button size='sm' onClick={() => fileInputRef.current?.click()}>
-              <UploadIcon className='size-4' />
-              导入
-            </Button>
+        {/* 第一行：筛选条件 */}
+        <div className='flex flex-wrap items-center gap-2 px-6 py-3'>
+          <div className='relative'>
+            <SearchIcon className='text-muted-foreground absolute left-2.5 top-2.5 size-4' />
+            <Input placeholder='搜索企业...' className='pl-8 w-52' value={globalFilter} onChange={e => setGlobalFilter(e.target.value)} />
           </div>
+          <Select
+            value={(columnFilters.find(f => f.id === 'industry')?.value as string) ?? 'all'}
+            onValueChange={value => { setColumnFilters(prev => { const next = prev.filter(f => f.id !== 'industry'); if (value !== 'all') next.push({ id: 'industry', value }); return next }) }}
+          >
+            <SelectTrigger className='w-32'><SelectValue placeholder='全部行业' /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value='all'>全部行业</SelectItem>
+              {industries.map(item => <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select
+            value={(columnFilters.find(f => f.id === 'township')?.value as string) ?? 'all'}
+            onValueChange={value => { setColumnFilters(prev => { const next = prev.filter(f => f.id !== 'township'); if (value !== 'all') next.push({ id: 'township', value }); return next }) }}
+          >
+            <SelectTrigger className='w-36'><SelectValue placeholder='全部乡镇' /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value='all'>全部乡镇</SelectItem>
+              {townships.map(item => <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <DatePicker value={dateStart} onChange={setDateStart} placeholder='开始日期' />
+          <span className='text-muted-foreground text-sm'>至</span>
+          <DatePicker value={dateEnd} onChange={setDateEnd} placeholder='截止日期' />
+          {(dateStart || dateEnd) && (
+            <Button variant='ghost' size='sm' className='text-muted-foreground' onClick={() => { setDateStart(''); setDateEnd('') }}>清除</Button>
+          )}
+        </div>
+        {/* 第二行：操作按钮靠右 */}
+        <div className='flex items-center justify-end gap-2 px-6 pb-3'>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant='ghost' className='text-muted-foreground size-8 rounded-full'>
+                <EllipsisVerticalIcon /><span className='sr-only'>菜单</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end'>
+              <DropdownMenuGroup>
+                <DropdownMenuItem onSelect={() => exportLevelAll(filteredData, title)}>导出全部</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setExportOpen(true)}>分类导出</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setQuestionnaireOpen(true)}>导出分类问卷</DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button variant='ghost' size='icon' className='size-8' onClick={() => window.location.reload()}>
+            <RefreshCwIcon className='size-4' />
+            <span className='sr-only'>刷新</span>
+          </Button>
+          <Button variant='outline' size='sm' onClick={() => exportLevelAll(filteredData, title)}>
+            <DownloadIcon className='size-4' />
+            导出
+          </Button>
+          <Button size='sm' onClick={() => fileInputRef.current?.click()}>
+            <UploadIcon className='size-4' />
+            导入
+          </Button>
         </div>
         <Table>
           <TableHeader>
@@ -748,6 +768,7 @@ export default function LevelTable({ title, filterKey }: {
         ref={fileInputRef}
         type='file'
         accept='.xlsx,.xls'
+        multiple
         className='hidden'
         onChange={handleImport}
       />
