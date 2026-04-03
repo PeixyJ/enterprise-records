@@ -31,16 +31,16 @@ function StatCard({ title, value, icon: Icon, description, color }: {
   title: string; value: string | number; icon: React.ElementType; description?: string; color: string
 }) {
   return (
-    <Card>
-      <CardHeader className='flex flex-row items-center justify-between pb-2'>
-        <CardTitle className='text-sm font-medium text-muted-foreground'>{title}</CardTitle>
-        <div className={cn('flex size-9 items-center justify-center rounded-lg', color)}>
+    <Card className='py-4'>
+      <CardContent className='flex items-center gap-3 px-4 py-0'>
+        <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg', color)}>
           <Icon className='size-4' />
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className='text-2xl font-bold'>{value}</div>
-        {description && <p className='text-xs text-muted-foreground mt-1'>{description}</p>}
+        <div>
+          <p className='text-xs text-muted-foreground'>{title}</p>
+          <p className='text-lg font-bold leading-tight'>{value}</p>
+          {description && <p className='text-xs text-muted-foreground'>{description}</p>}
+        </div>
       </CardContent>
     </Card>
   )
@@ -57,16 +57,18 @@ export default function DashboardPage() {
   const operating = data.filter(r => r.isOperating).length
   const townLevel = data.filter(r => r.inTownLevel).length
   const cityLevel = data.filter(r => r.inCityLevel).length
+  const otherLevel = data.filter(r => r.inOther).length
 
   // 按乡镇汇总
   const townshipStats = useMemo(() => {
-    const map = new Map<string, { total: number; town: number; city: number; townExit: number; cityExit: number }>()
+    const map = new Map<string, { total: number; town: number; city: number; other: number; townExit: number; cityExit: number }>()
     for (const r of data) {
       const key = r.township || '未知'
-      const s = map.get(key) ?? { total: 0, town: 0, city: 0, townExit: 0, cityExit: 0 }
+      const s = map.get(key) ?? { total: 0, town: 0, city: 0, other: 0, townExit: 0, cityExit: 0 }
       s.total++
       if (r.inTownLevel) s.town++
       if (r.inCityLevel) s.city++
+      if (r.inOther) s.other++
       map.set(key, s)
     }
     return Array.from(map.entries())
@@ -76,13 +78,14 @@ export default function DashboardPage() {
 
   // 按行业汇总
   const industryStats = useMemo(() => {
-    const map = new Map<string, { total: number; town: number; city: number }>()
+    const map = new Map<string, { total: number; town: number; city: number; other: number }>()
     for (const r of data) {
       const key = r.industry || '未知'
-      const s = map.get(key) ?? { total: 0, town: 0, city: 0 }
+      const s = map.get(key) ?? { total: 0, town: 0, city: 0, other: 0 }
       s.total++
       if (r.inTownLevel) s.town++
       if (r.inCityLevel) s.city++
+      if (r.inOther) s.other++
       map.set(key, s)
     }
     return Array.from(map.entries())
@@ -103,31 +106,33 @@ export default function DashboardPage() {
 
       <div className='p-6 space-y-6'>
         {/* 统计卡片 */}
-        <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4'>
+        <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4'>
           <StatCard title='初筛信息条数' value={total} icon={FileTextIcon} color='bg-blue-100 text-blue-600' />
           <StatCard title='规上企业' value={aboveScale} icon={FactoryIcon} description={`占比 ${total ? Math.round(aboveScale / total * 100) : 0}%`} color='bg-emerald-100 text-emerald-600' />
           <StatCard title='正常运营' value={operating} icon={TrendingUpIcon} description={`占比 ${total ? Math.round(operating / total * 100) : 0}%`} color='bg-green-100 text-green-600' />
           <StatCard title='列入镇级' value={townLevel} icon={BuildingIcon} description={`在库 ${townLevel} 家`} color='bg-amber-100 text-amber-600' />
           <StatCard title='列入市级' value={cityLevel} icon={LandmarkIcon} description={`在库 ${cityLevel} 家`} color='bg-purple-100 text-purple-600' />
+          <StatCard title='列入其他' value={otherLevel} icon={FileTextIcon} description={`在库 ${otherLevel} 家`} color='bg-gray-100 text-gray-600' />
         </div>
 
-        <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
+        <div className='grid grid-cols-1 lg:grid-cols-2 gap-6 min-w-0'>
           {/* 按乡镇汇总 */}
-          <Card>
+          <Card className='min-w-0'>
             <CardHeader>
               <CardTitle className='flex items-center gap-2'>
                 <Building2Icon className='size-5' />
                 按乡镇汇总
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className='overflow-auto'>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>乡镇</TableHead>
                     <TableHead className='text-right'>初筛条数</TableHead>
-                    <TableHead className='text-right'>镇级</TableHead>
                     <TableHead className='text-right'>市级</TableHead>
+                    <TableHead className='text-right'>镇级</TableHead>
+                    <TableHead className='text-right'>其他</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -136,10 +141,13 @@ export default function DashboardPage() {
                       <TableCell className='font-medium'>{s.township}</TableCell>
                       <TableCell className='text-right'>{s.total}</TableCell>
                       <TableCell className='text-right'>
+                        {s.city > 0 ? <Badge variant='outline' className='rounded-sm'>{s.city}</Badge> : '—'}
+                      </TableCell>
+                      <TableCell className='text-right'>
                         {s.town > 0 ? <Badge variant='outline' className='rounded-sm'>{s.town}</Badge> : '—'}
                       </TableCell>
                       <TableCell className='text-right'>
-                        {s.city > 0 ? <Badge variant='outline' className='rounded-sm'>{s.city}</Badge> : '—'}
+                        {s.other > 0 ? <Badge variant='outline' className='rounded-sm'>{s.other}</Badge> : '—'}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -147,8 +155,9 @@ export default function DashboardPage() {
                     <TableRow className='font-semibold bg-muted/30'>
                       <TableCell>合计</TableCell>
                       <TableCell className='text-right'>{total}</TableCell>
-                      <TableCell className='text-right'>{townLevel}</TableCell>
                       <TableCell className='text-right'>{cityLevel}</TableCell>
+                      <TableCell className='text-right'>{townLevel}</TableCell>
+                      <TableCell className='text-right'>{otherLevel}</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -157,21 +166,22 @@ export default function DashboardPage() {
           </Card>
 
           {/* 按行业汇总 */}
-          <Card>
+          <Card className='min-w-0'>
             <CardHeader>
               <CardTitle className='flex items-center gap-2'>
                 <UsersIcon className='size-5' />
                 按行业汇总
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className='overflow-auto'>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>行业</TableHead>
                     <TableHead className='text-right'>初筛条数</TableHead>
-                    <TableHead className='text-right'>镇级</TableHead>
                     <TableHead className='text-right'>市级</TableHead>
+                    <TableHead className='text-right'>镇级</TableHead>
+                    <TableHead className='text-right'>其他</TableHead>
                     <TableHead className='text-right'>占比</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -181,10 +191,13 @@ export default function DashboardPage() {
                       <TableCell className='font-medium'>{s.industry}</TableCell>
                       <TableCell className='text-right'>{s.total}</TableCell>
                       <TableCell className='text-right'>
+                        {s.city > 0 ? <Badge variant='outline' className='rounded-sm'>{s.city}</Badge> : '—'}
+                      </TableCell>
+                      <TableCell className='text-right'>
                         {s.town > 0 ? <Badge variant='outline' className='rounded-sm'>{s.town}</Badge> : '—'}
                       </TableCell>
                       <TableCell className='text-right'>
-                        {s.city > 0 ? <Badge variant='outline' className='rounded-sm'>{s.city}</Badge> : '—'}
+                        {s.other > 0 ? <Badge variant='outline' className='rounded-sm'>{s.other}</Badge> : '—'}
                       </TableCell>
                       <TableCell className='text-right text-muted-foreground'>
                         {total ? Math.round(s.total / total * 100) : 0}%
@@ -195,8 +208,9 @@ export default function DashboardPage() {
                     <TableRow className='font-semibold bg-muted/30'>
                       <TableCell>合计</TableCell>
                       <TableCell className='text-right'>{total}</TableCell>
-                      <TableCell className='text-right'>{townLevel}</TableCell>
                       <TableCell className='text-right'>{cityLevel}</TableCell>
+                      <TableCell className='text-right'>{townLevel}</TableCell>
+                      <TableCell className='text-right'>{otherLevel}</TableCell>
                       <TableCell className='text-right'>100%</TableCell>
                     </TableRow>
                   )}
@@ -229,9 +243,9 @@ export default function DashboardPage() {
                 <TableBody>
                   {data.filter(r => !r.isOperating).map(r => (
                     <TableRow key={r.id}>
-                      <TableCell className='font-medium'>{r.companyName}</TableCell>
-                      <TableCell className='text-muted-foreground'>{r.industry}</TableCell>
-                      <TableCell className='text-muted-foreground'>{r.township}</TableCell>
+                      <TableCell className='font-medium max-w-40 truncate'>{r.companyName}</TableCell>
+                      <TableCell className='text-muted-foreground max-w-24 truncate'>{r.industry}</TableCell>
+                      <TableCell className='text-muted-foreground max-w-28 truncate'>{r.township}</TableCell>
                       <TableCell>
                         <Badge className={cn('rounded-sm px-1.5', r.isAboveScale
                           ? 'bg-green-100 text-green-800' : 'bg-muted text-muted-foreground'

@@ -97,7 +97,7 @@ export interface ProgressEntry {
 
 // ── Demo 扩展数据 ──────────────────────────────────
 
-const demoExtras: Record<string, Omit<LevelRecord, 'id' | 'creditCode' | 'companyName' | 'industry' | 'township' | 'status'>> = {
+const demoExtras: Record<string, Omit<LevelRecord, 'id' | 'creditCode' | 'companyName' | 'industry' | 'township' | 'status' | 'reportDate'>> = {
   '1': {
     businessStatus: '正常经营，业务量同比增长15%',
     assetStatus: '总资产5200万元，固定资产占比40%',
@@ -181,7 +181,7 @@ const demoExtras: Record<string, Omit<LevelRecord, 'id' | 'creditCode' | 'compan
   },
 }
 
-const defaultExtra: Omit<LevelRecord, 'id' | 'creditCode' | 'companyName' | 'industry' | 'township' | 'status'> = {
+const defaultExtra: Omit<LevelRecord, 'id' | 'creditCode' | 'companyName' | 'industry' | 'township' | 'status' | 'reportDate'> = {
   businessStatus: '—', assetStatus: '—', debtStatus: '—', staffStatus: '—',
   otherFeedback: '—', coordination: '—', progress: [],
 }
