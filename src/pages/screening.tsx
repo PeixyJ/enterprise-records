@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 
 import {
@@ -280,6 +280,7 @@ export default function ScreeningPage() {
   }
   const [globalFilter, setGlobalFilter] = useState('')
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [levelFilter, setLevelFilter] = useState<'all' | 'town' | 'city'>('all')
   const industries = getIndustries()
   const townships = getTownships()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -359,6 +360,9 @@ export default function ScreeningPage() {
 
   const [exportOpen, setExportOpen] = useState(false)
   const [exportDate, setExportDate] = useState('')
+  const [exportAllOpen, setExportAllOpen] = useState(false)
+  const [exportAllStartDate, setExportAllStartDate] = useState('')
+  const [exportAllEndDate, setExportAllEndDate] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteRecord, setDeleteRecord] = useState<ScreeningRecord | null>(null)
 
@@ -382,8 +386,14 @@ export default function ScreeningPage() {
     pageSize,
   })
 
+  const filteredData = useMemo(() =>
+    levelFilter === 'all' ? data
+    : levelFilter === 'town' ? data.filter(r => r.inTownLevel)
+    : data.filter(r => r.inCityLevel)
+  , [data, levelFilter])
+
   const table = useReactTable({
-    data,
+    data: filteredData,
     columns,
     initialState: {
       sorting: [{ id: 'reportDate', desc: true }],
@@ -467,6 +477,16 @@ export default function ScreeningPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={levelFilter} onValueChange={v => setLevelFilter(v as 'all' | 'town' | 'city')}>
+              <SelectTrigger className='w-28'>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value='all'>全部</SelectItem>
+                <SelectItem value='town'>镇级</SelectItem>
+                <SelectItem value='city'>市级</SelectItem>
+              </SelectContent>
+            </Select>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant='ghost' className='text-muted-foreground size-8 rounded-full'>
@@ -476,7 +496,7 @@ export default function ScreeningPage() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align='end'>
                 <DropdownMenuGroup>
-                  <DropdownMenuItem onSelect={() => exportScreeningAll(data)}>导出全部</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setExportAllOpen(true)}>导出全部</DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => setExportOpen(true)}>分类导出</DropdownMenuItem>
                 </DropdownMenuGroup>
               </DropdownMenuContent>
@@ -485,7 +505,7 @@ export default function ScreeningPage() {
               <RefreshCwIcon className='size-4' />
               <span className='sr-only'>刷新</span>
             </Button>
-            <Button variant='outline' size='sm' onClick={() => exportScreeningAll(data)}>
+            <Button variant='outline' size='sm' onClick={() => setExportAllOpen(true)}>
               <DownloadIcon className='size-4' />
               导出
             </Button>
@@ -670,6 +690,49 @@ export default function ScreeningPage() {
           <DialogFooter>
             <Button variant='outline' onClick={() => setDeleteOpen(false)}>取消</Button>
             <Button variant='destructive' onClick={confirmDelete}>删除</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 导出全部 Dialog */}
+      <Dialog open={exportAllOpen} onOpenChange={setExportAllOpen}>
+        <DialogContent className='sm:max-w-md'>
+          <DialogHeader>
+            <DialogTitle>导出表格</DialogTitle>
+            <DialogDescription>筛选上报时间范围后导出为 Excel 文件。不选则导出全部数据。</DialogDescription>
+          </DialogHeader>
+          <div className='py-4 space-y-4'>
+            <div>
+              <Label htmlFor='export-all-start'>开始日期</Label>
+              <Input id='export-all-start' type='date' className='mt-2' value={exportAllStartDate} onChange={e => setExportAllStartDate(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor='export-all-end'>截止日期</Label>
+              <Input id='export-all-end' type='date' className='mt-2' value={exportAllEndDate} onChange={e => setExportAllEndDate(e.target.value)} />
+            </div>
+            <p className='text-sm text-muted-foreground'>
+              {(() => {
+                const filtered = data.filter(r =>
+                  (!exportAllStartDate || r.reportDate >= exportAllStartDate) &&
+                  (!exportAllEndDate || r.reportDate <= exportAllEndDate)
+                )
+                return `符合条件的记录：${filtered.length} 条`
+              })()}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant='outline' onClick={() => setExportAllOpen(false)}>取消</Button>
+            <Button onClick={() => {
+              const filtered = data.filter(r =>
+                (!exportAllStartDate || r.reportDate >= exportAllStartDate) &&
+                (!exportAllEndDate || r.reportDate <= exportAllEndDate)
+              )
+              exportScreeningAll(filtered)
+              setExportAllOpen(false)
+            }}>
+              <DownloadIcon className='size-4' />
+              导出
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

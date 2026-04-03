@@ -8,7 +8,7 @@ export async function getDatabase(): Promise<Database> {
   if (db) return db
 
   const SQL = await initSqlJs({
-    locateFile: () => `./sql-wasm.wasm`,
+    locateFile: () => window.location.protocol === 'file:' ? './sql-wasm.wasm' : '/sql-wasm.wasm',
   })
 
   // Try to load from localStorage
@@ -81,7 +81,7 @@ export function exportDatabase(): Uint8Array {
 /** 导入 sqlite 文件覆盖当前数据库 */
 export async function importDatabase(data: Uint8Array): Promise<void> {
   const SQL = await initSqlJs({
-    locateFile: () => `./sql-wasm.wasm`,
+    locateFile: () => window.location.protocol === 'file:' ? './sql-wasm.wasm' : '/sql-wasm.wasm',
   })
   if (db) db.close()
   db = new SQL.Database(data)
