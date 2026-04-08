@@ -30,11 +30,18 @@ jobs:
       - name: Build frontend
         run: pnpm run build
 
+      - name: Generate version string
+        id: version
+        shell: bash
+        run: |
+          VERSION="$(date -u +'%Y%m%d%H%M')-$(git rev-parse --short HEAD)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Build Windows installer
         run: pnpm exec electron-builder --win --publish never
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: enterprise-records-windows
+          name: enterprise-records-${{ steps.version.outputs.version }}
           path: release/*.exe
