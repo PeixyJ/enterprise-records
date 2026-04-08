@@ -6,16 +6,21 @@ const DB_STORAGE_KEY = "enterprise-records-db"
 const DB_VERSION_KEY = "enterprise-records-version"
 const DB_BACKUP_PREFIX = "enterprise-records-db-backup-"
 
+const isElectron = !!window.electronDB
+
 /** 应用启动时检测版本变化，自动备份旧数据库 */
-function backupIfVersionChanged(): void {
+async function backupIfVersionChanged(): Promise<void> {
   const currentVersion = `${__BUILD_TIME__} (${__GIT_HASH__})`
   const savedVersion = localStorage.getItem(DB_VERSION_KEY)
 
   if (savedVersion && savedVersion !== currentVersion) {
-    const savedDb = localStorage.getItem(DB_STORAGE_KEY)
-    if (savedDb) {
-      const backupKey = `${DB_BACKUP_PREFIX}${savedVersion}`
-      localStorage.setItem(backupKey, savedDb)
+    if (isElectron) {
+      await window.electronDB!.backupDatabase(savedVersion)
+    } else {
+      const savedDb = localStorage.getItem(DB_STORAGE_KEY)
+      if (savedDb) {
+        localStorage.setItem(`${DB_BACKUP_PREFIX}${savedVersion}`, savedDb)
+      }
     }
   }
 
@@ -25,22 +30,53 @@ function backupIfVersionChanged(): void {
 export async function getDatabase(): Promise<Database> {
   if (db) return db
 
-  backupIfVersionChanged()
+  await backupIfVersionChanged()
 
   const SQL = await initSqlJs({
     locateFile: () => window.location.protocol === 'file:' ? './sql-wasm.wasm' : '/sql-wasm.wasm',
   })
 
-  // Try to load from localStorage
-  const savedDb = localStorage.getItem(DB_STORAGE_KEY)
-  if (savedDb) {
-    const buf = Uint8Array.from(atob(savedDb), (c) => c.charCodeAt(0))
-    db = new SQL.Database(buf)
+  if (isElectron) {
+    const fileData = await window.electronDB!.readDatabase()
+    if (fileData) {
+      db = new SQL.Database(new Uint8Array(fileData))
+    } else {
+      // 首次运行：检查 localStorage 是否有旧数据需要迁移
+      const savedDb = localStorage.getItem(DB_STORAGE_KEY)
+      if (savedDb) {
+        const buf = Uint8Array.from(atob(savedDb), (c) => c.charCodeAt(0))
+        db = new SQL.Database(buf)
+      } else {
+        db = new SQL.Database()
+      }
+    }
   } else {
-    db = new SQL.Database()
+    const savedDb = localStorage.getItem(DB_STORAGE_KEY)
+    if (savedDb) {
+      const buf = Uint8Array.from(atob(savedDb), (c) => c.charCodeAt(0))
+      db = new SQL.Database(buf)
+    } else {
+      db = new SQL.Database()
+    }
   }
 
   initTables()
+
+  // Electron 模式下：持久化到文件，并清理 localStorage 中的旧数据
+  if (isElectron) {
+    const data = db.export()
+    await window.electronDB!.writeDatabase(data)
+
+    if (localStorage.getItem(DB_STORAGE_KEY)) {
+      localStorage.removeItem(DB_STORAGE_KEY)
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i)
+        if (key && key.startsWith(DB_BACKUP_PREFIX)) {
+          localStorage.removeItem(key)
+        }
+      }
+    }
+  }
 
   return db
 }
@@ -88,8 +124,15 @@ function initTables(): void {
 export function saveDatabase(): void {
   if (!db) return
   const data = db.export()
-  const base64 = btoa(String.fromCharCode(...data))
-  localStorage.setItem(DB_STORAGE_KEY, base64)
+
+  if (isElectron) {
+    window.electronDB!.writeDatabase(data).catch(err => {
+      console.error('Failed to save database to disk:', err)
+    })
+  } else {
+    const base64 = btoa(String.fromCharCode(...data))
+    localStorage.setItem(DB_STORAGE_KEY, base64)
+  }
 }
 
 /** 导出数据库为 Uint8Array */

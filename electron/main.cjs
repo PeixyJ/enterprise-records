@@ -1,5 +1,31 @@
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
+const fs = require('fs')
+
+const DB_PATH = path.join(app.getPath('userData'), 'enterprise-records.sqlite')
+
+// ---- IPC: database file operations ----
+
+ipcMain.handle('db:read', async () => {
+  if (fs.existsSync(DB_PATH)) {
+    return fs.readFileSync(DB_PATH)
+  }
+  return null
+})
+
+ipcMain.handle('db:write', async (_event, data) => {
+  fs.writeFileSync(DB_PATH, Buffer.from(data))
+})
+
+ipcMain.handle('db:backup', async (_event, versionLabel) => {
+  if (fs.existsSync(DB_PATH)) {
+    const safeName = versionLabel.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const backupPath = path.join(app.getPath('userData'), `enterprise-records-backup-${safeName}.sqlite`)
+    fs.copyFileSync(DB_PATH, backupPath)
+  }
+})
+
+// ---- Window ----
 
 let mainWindow
 
@@ -13,6 +39,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
   })
 
