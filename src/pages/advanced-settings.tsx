@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { AlertTriangleIcon, DownloadIcon, RotateCcwIcon, ShieldAlertIcon, UploadIcon } from 'lucide-react'
+import { AlertTriangleIcon, DownloadIcon, InfoIcon, RotateCcwIcon, ShieldAlertIcon, UploadIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -168,6 +168,26 @@ export default function AdvancedSettingsPage() {
               <RotateCcwIcon className='size-4' />
               初始化系统
             </Button>
+          </CardContent>
+        </Card>
+        {/* 系统信息 */}
+        <Card>
+          <CardHeader>
+            <div className='flex items-center gap-3'>
+              <div className='flex size-10 items-center justify-center rounded-lg bg-gray-100 text-gray-600'>
+                <InfoIcon className='size-5' />
+              </div>
+              <div>
+                <CardTitle>系统信息</CardTitle>
+                <CardDescription>当前系统的版本信息</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className='text-sm text-muted-foreground space-y-1'>
+              <p>构建时间：{__BUILD_TIME__}</p>
+              <p>版本标识：{__GIT_HASH__}</p>
+            </div>
           </CardContent>
         </Card>
       </div>

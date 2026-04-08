@@ -3,9 +3,29 @@ import initSqlJs, { type Database } from "sql.js"
 let db: Database | null = null
 
 const DB_STORAGE_KEY = "enterprise-records-db"
+const DB_VERSION_KEY = "enterprise-records-version"
+const DB_BACKUP_PREFIX = "enterprise-records-db-backup-"
+
+/** 应用启动时检测版本变化，自动备份旧数据库 */
+function backupIfVersionChanged(): void {
+  const currentVersion = `${__BUILD_TIME__} (${__GIT_HASH__})`
+  const savedVersion = localStorage.getItem(DB_VERSION_KEY)
+
+  if (savedVersion && savedVersion !== currentVersion) {
+    const savedDb = localStorage.getItem(DB_STORAGE_KEY)
+    if (savedDb) {
+      const backupKey = `${DB_BACKUP_PREFIX}${savedVersion}`
+      localStorage.setItem(backupKey, savedDb)
+    }
+  }
+
+  localStorage.setItem(DB_VERSION_KEY, currentVersion)
+}
 
 export async function getDatabase(): Promise<Database> {
   if (db) return db
+
+  backupIfVersionChanged()
 
   const SQL = await initSqlJs({
     locateFile: () => window.location.protocol === 'file:' ? './sql-wasm.wasm' : '/sql-wasm.wasm',
