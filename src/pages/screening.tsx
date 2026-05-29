@@ -416,13 +416,15 @@ export default function ScreeningPage() {
 
   const filteredData = useMemo(() => {
     let result = data
+    const industry = columnFilters.find(f => f.id === 'industry')?.value as string | undefined
+    if (industry) result = result.filter(r => r.industry === industry)
     if (levelFilter === 'town') result = result.filter(r => r.inTownLevel)
     else if (levelFilter === 'city') result = result.filter(r => r.inCityLevel)
     else if (levelFilter === 'other') result = result.filter(r => r.inOther)
     if (dateStart) result = result.filter(r => r.reportDate >= dateStart)
     if (dateEnd) result = result.filter(r => r.reportDate <= dateEnd)
     return result
-  }, [data, levelFilter, dateStart, dateEnd])
+  }, [data, levelFilter, dateStart, dateEnd, columnFilters])
 
   const table = useReactTable({
     data: filteredData,

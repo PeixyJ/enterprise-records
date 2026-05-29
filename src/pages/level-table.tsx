@@ -427,10 +427,12 @@ export default function LevelTable({ title, filterKey }: {
 
   const filteredData = useMemo(() => {
     let result = data
+    const industry = columnFilters.find(f => f.id === 'industry')?.value as string | undefined
+    if (industry) result = result.filter(r => r.industry === industry)
     if (dateStart) result = result.filter(r => r.reportDate >= dateStart)
     if (dateEnd) result = result.filter(r => r.reportDate <= dateEnd)
     return result
-  }, [data, dateStart, dateEnd])
+  }, [data, dateStart, dateEnd, columnFilters])
 
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize })
 
