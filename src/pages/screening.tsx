@@ -77,6 +77,7 @@ import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem } fro
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 import { usePagination } from '@/hooks/use-pagination'
+import { PageJump } from '@/components/page-jump'
 import { getIndustries, getTownships } from '@/db/dict'
 import { SCREENING_STORAGE_KEY, SCREENING_DETAIL_KEY } from '@/db/database'
 import { importScreeningExcel, exportScreeningAll, exportScreeningZip } from '@/lib/excel'
@@ -689,6 +690,10 @@ export default function ScreeningPage() {
                   下一页
                   <ChevronRightIcon aria-hidden='true' />
                 </Button>
+              </PaginationItem>
+
+              <PaginationItem>
+                <PageJump pageCount={table.getPageCount()} onJump={page => table.setPageIndex(page - 1)} />
               </PaginationItem>
             </PaginationContent>
           </Pagination>

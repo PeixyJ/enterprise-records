@@ -62,6 +62,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Separator } from '@/components/ui/separator'
 
 import { usePagination } from '@/hooks/use-pagination'
+import { PageJump } from '@/components/page-jump'
 import { getIndustries, getTownships } from '@/db/dict'
 import { SCREENING_STORAGE_KEY } from '@/db/database'
 import { type ScreeningRecord, demoData, getIndustryIcon } from './screening'
@@ -290,16 +291,22 @@ function createColumns(onViewProgress: (record: LevelRecord) => void, onViewDeta
       cell: ({ row }) => <button type='button' className='text-sm max-w-40 truncate block text-left cursor-pointer hover:text-primary' onClick={() => onViewDetail('经营情况', row.getValue('businessStatus'))}>{row.getValue('businessStatus')}</button>,
     },
     {
-      header: '资产情况', accessorKey: 'assetStatus',
-      cell: ({ row }) => <button type='button' className='text-sm max-w-40 truncate block text-left cursor-pointer hover:text-primary' onClick={() => onViewDetail('资产情况', row.getValue('assetStatus'))}>{row.getValue('assetStatus')}</button>,
-    },
-    {
-      header: '负债情况', accessorKey: 'debtStatus',
-      cell: ({ row }) => <button type='button' className='text-sm max-w-40 truncate block text-left cursor-pointer hover:text-primary' onClick={() => onViewDetail('负债情况', row.getValue('debtStatus'))}>{row.getValue('debtStatus')}</button>,
-    },
-    {
-      header: '员工情况', accessorKey: 'staffStatus',
-      cell: ({ row }) => <button type='button' className='text-sm max-w-40 truncate block text-left cursor-pointer hover:text-primary' onClick={() => onViewDetail('员工情况', row.getValue('staffStatus'))}>{row.getValue('staffStatus')}</button>,
+      id: 'latestProgress',
+      header: '最新进展',
+      enableSorting: false,
+      accessorFn: row => row.progress.length > 0 ? row.progress[row.progress.length - 1].content : '',
+      cell: ({ row }) => {
+        const progress = row.original.progress
+        if (progress.length === 0) {
+          return <span className='text-sm text-muted-foreground'>暂无进展</span>
+        }
+        const latest = progress[progress.length - 1]
+        return (
+          <button type='button' className='text-sm max-w-56 truncate block text-left cursor-pointer hover:text-primary' onClick={() => onViewDetail('最新进展', `${latest.date}\n\n${latest.content}${latest.instruction ? `\n\n批示：${latest.instruction}` : ''}`)}>
+            {latest.content}
+          </button>
+        )
+      },
     },
     {
       id: 'actions', header: '进展', enableSorting: false,
@@ -594,6 +601,9 @@ export default function LevelTable({ title, filterKey }: {
                 <Button className='disabled:pointer-events-none disabled:opacity-50' variant='ghost' onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} aria-label='下一页'>
                   下一页<ChevronRightIcon />
                 </Button>
+              </PaginationItem>
+              <PaginationItem>
+                <PageJump pageCount={table.getPageCount()} onJump={page => table.setPageIndex(page - 1)} />
               </PaginationItem>
             </PaginationContent>
           </Pagination>
