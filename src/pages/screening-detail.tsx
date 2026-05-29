@@ -29,7 +29,7 @@ import { loadProgressInfo, type LevelExtra } from './level-table'
 
 // ── 数据类型 ──────────────────────────────────────
 
-interface TaxYearData {
+export interface TaxYearData {
   year: string
   revenue: number
   profit: number
@@ -39,7 +39,7 @@ interface TaxYearData {
   debtRatio: number
 }
 
-interface SimpleYearData {
+export interface SimpleYearData {
   year: string
   value: number
 }
@@ -64,7 +64,7 @@ interface StoredDetail {
   reportSources?: { department?: string; warningReason?: string; issueDate?: string; amount?: number; other?: string }[]
 }
 
-function loadDetailData(id: string): StoredDetail | null {
+export function loadDetailData(id: string): StoredDetail | null {
   const saved = localStorage.getItem(SCREENING_DETAIL_KEY)
   if (!saved) return null
   try {
@@ -73,7 +73,7 @@ function loadDetailData(id: string): StoredDetail | null {
   } catch { return null }
 }
 
-function toTaxData(detail: StoredDetail | null): TaxYearData[] {
+export function toTaxData(detail: StoredDetail | null): TaxYearData[] {
   if (!detail?.tax || detail.tax.length === 0) return []
   return detail.tax
     .filter(t => t.revenue != null || t.profit != null || t.taxPayable != null || t.assets != null || t.liabilities != null || t.debtRatio != null)
@@ -88,7 +88,7 @@ function toTaxData(detail: StoredDetail | null): TaxYearData[] {
     }))
 }
 
-function toSimpleData(arr?: { year: number; value?: number }[]): SimpleYearData[] {
+export function toSimpleData(arr?: { year: number; value?: number }[]): SimpleYearData[] {
   if (!arr) return []
   return arr
     .filter(d => d.value != null)
@@ -139,7 +139,7 @@ function BoolValue({ value }: { value: boolean }) {
     : <span className='flex items-center gap-1 text-red-500'><XIcon className='size-3.5' />否</span>
 }
 
-function fmt(n: number): string {
+export function fmt(n: number): string {
   return n.toLocaleString('zh-CN')
 }
 

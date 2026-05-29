@@ -249,9 +249,28 @@ function toLevelRecords(records: ScreeningRecord[], filterKey: 'inCityLevel' | '
     })
 }
 
+// ── 集团 ────────────────────────────────────────────
+
+export interface GroupDef {
+  id: string
+  name: string
+  members: string[] // 成员企业的社会信用代码
+}
+
+const GROUPS_STORAGE_KEY = 'enterprise-records-groups'
+
+export function loadGroups(): GroupDef[] {
+  const saved = localStorage.getItem(GROUPS_STORAGE_KEY)
+  if (saved) try { return JSON.parse(saved) } catch { /* */ }
+  return []
+}
+
+// 表格行：普通企业行或集团行
+type DisplayRow = LevelRecord & { isGroup?: boolean; group?: GroupDef }
+
 // ── 列定义 ──────────────────────────────────────────
 
-function createColumns(onViewProgress: (record: LevelRecord) => void, onViewDetail: (label: string, value: string) => void, onViewCompany: (record: LevelRecord) => void): ColumnDef<LevelRecord>[] {
+function createColumns(onViewProgress: (record: LevelRecord) => void, onViewDetail: (label: string, value: string) => void, onViewCompany: (record: LevelRecord) => void, onViewGroup: (group: GroupDef) => void): ColumnDef<DisplayRow>[] {
   return [
     {
       id: 'select',
@@ -270,16 +289,34 @@ function createColumns(onViewProgress: (record: LevelRecord) => void, onViewDeta
     {
       header: '信用代码',
       accessorKey: 'creditCode',
-      cell: ({ row }) => (
-        <Link to={`/app/screening/${row.original.id}`} className='font-mono text-sm text-primary hover:underline'>
-          {row.getValue('creditCode')}
-        </Link>
-      ),
+      cell: ({ row }) => row.original.isGroup
+        ? <span className='text-muted-foreground'>—</span>
+        : (
+          <Link to={`/app/screening/${row.original.id}`} className='font-mono text-sm text-primary hover:underline'>
+            {row.getValue('creditCode')}
+          </Link>
+        ),
     },
     {
       header: '企业名称',
       accessorKey: 'companyName',
       cell: ({ row }) => {
+        if (row.original.isGroup) {
+          const group = row.original.group!
+          return (
+            <Link to={`/app/group/${group.id}`} className='flex items-center gap-2 hover:underline text-left'>
+              <Avatar className='size-8'>
+                <AvatarFallback className='bg-amber-100 text-amber-700'>
+                  <LayersIcon className='size-4' />
+                </AvatarFallback>
+              </Avatar>
+              <div className='flex flex-col'>
+                <span className='font-medium'>{group.name}</span>
+                <span className='text-xs text-muted-foreground'>集团 · {group.members.length} 家企业</span>
+              </div>
+            </Link>
+          )
+        }
         const Icon = getIndustryIcon(row.original.industry)
         const status = row.original.status
         return (
@@ -307,11 +344,13 @@ function createColumns(onViewProgress: (record: LevelRecord) => void, onViewDeta
     },
     {
       header: '乡镇街道', accessorKey: 'township',
-      cell: ({ row }) => <span className='text-muted-foreground'>{row.getValue('township')}</span>,
+      cell: ({ row }) => <span className='text-muted-foreground'>{row.original.isGroup ? '—' : row.getValue('township')}</span>,
     },
     {
       header: '经营情况', accessorKey: 'businessStatus',
-      cell: ({ row }) => <button type='button' className='text-sm max-w-40 truncate block text-left cursor-pointer hover:text-primary' onClick={() => onViewDetail('经营情况', row.getValue('businessStatus'))}>{row.getValue('businessStatus')}</button>,
+      cell: ({ row }) => row.original.isGroup
+        ? <span className='text-sm text-muted-foreground'>—</span>
+        : <button type='button' className='text-sm max-w-40 truncate block text-left cursor-pointer hover:text-primary' onClick={() => onViewDetail('经营情况', row.getValue('businessStatus'))}>{row.getValue('businessStatus')}</button>,
     },
     {
       id: 'latestProgress',
@@ -319,6 +358,7 @@ function createColumns(onViewProgress: (record: LevelRecord) => void, onViewDeta
       enableSorting: false,
       accessorFn: row => row.progress.length > 0 ? row.progress[row.progress.length - 1].content : '',
       cell: ({ row }) => {
+        if (row.original.isGroup) return <span className='text-sm text-muted-foreground'>—</span>
         const progress = row.original.progress
         if (progress.length === 0) {
           return <span className='text-sm text-muted-foreground'>暂无进展</span>
@@ -333,11 +373,13 @@ function createColumns(onViewProgress: (record: LevelRecord) => void, onViewDeta
     },
     {
       id: 'actions', header: '进展', enableSorting: false,
-      cell: ({ row }) => (
-        <Button variant='outline' size='sm' onClick={() => onViewProgress(row.original)}>
-          查看进展
-        </Button>
-      ),
+      cell: ({ row }) => row.original.isGroup
+        ? <Button variant='outline' size='sm' onClick={() => onViewGroup(row.original.group!)}>管理</Button>
+        : (
+          <Button variant='outline' size='sm' onClick={() => onViewProgress(row.original)}>
+            查看进展
+          </Button>
+        ),
     },
   ]
 }
@@ -453,16 +495,91 @@ export default function LevelTable({ title, filterKey }: {
     setCompanyOpen(true)
   }
 
-  const columns = createColumns(handleViewProgress, handleViewDetail, handleViewCompany)
+  // ── 集团 ──
+  const [groups, setGroups] = useState<GroupDef[]>(loadGroups)
+  const saveGroups = (next: GroupDef[]) => {
+    setGroups(next)
+    localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(next))
+  }
 
-  const filteredData = useMemo(() => {
-    let result = data
+  // 全部企业（按社会信用代码索引），用于查看集团成员的基本信息
+  const recordByCode = useMemo(() => {
+    const m = new Map<string, ScreeningRecord>()
+    for (const r of loadScreeningData()) if (r.creditCode) m.set(r.creditCode, r)
+    return m
+  }, [])
+
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false)
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
+  const [groupName, setGroupName] = useState('')
+  const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set())
+  const [memberSearch, setMemberSearch] = useState('')
+  const [viewGroup, setViewGroup] = useState<GroupDef | null>(null)
+
+  const openCreateGroup = () => {
+    setEditingGroupId(null)
+    setGroupName('')
+    setSelectedMembers(new Set())
+    setMemberSearch('')
+    setGroupDialogOpen(true)
+  }
+  const openEditGroup = (g: GroupDef) => {
+    setEditingGroupId(g.id)
+    setGroupName(g.name)
+    setSelectedMembers(new Set(g.members))
+    setMemberSearch('')
+    setViewGroup(null)
+    setGroupDialogOpen(true)
+  }
+  const toggleMember = (code: string) => {
+    setSelectedMembers(prev => {
+      const next = new Set(prev)
+      if (next.has(code)) next.delete(code); else next.add(code)
+      return next
+    })
+  }
+  const handleSaveGroup = () => {
+    const members = Array.from(selectedMembers)
+    if (!groupName.trim() || members.length === 0) return
+    if (editingGroupId) {
+      saveGroups(groups.map(g => g.id === editingGroupId ? { ...g, name: groupName.trim(), members } : g))
+    } else {
+      saveGroups([...groups, { id: String(Date.now()), name: groupName.trim(), members }])
+    }
+    setGroupDialogOpen(false)
+  }
+  const handleDeleteGroup = (id: string) => {
+    saveGroups(groups.filter(g => g.id !== id))
+    setViewGroup(null)
+  }
+
+  const columns = createColumns(handleViewProgress, handleViewDetail, handleViewCompany, g => setViewGroup(g))
+
+  // 已被集团关联的企业（社会信用代码）
+  const memberCodes = useMemo(() => {
+    const s = new Set<string>()
+    for (const g of groups) for (const c of g.members) s.add(c)
+    return s
+  }, [groups])
+
+  // 集团行
+  const groupRows = useMemo<DisplayRow[]>(() => groups.map(g => ({
+    id: 'group-' + g.id,
+    creditCode: '', companyName: g.name, industry: '', township: '',
+    businessStatus: '—', assetStatus: '—', debtStatus: '—', staffStatus: '—',
+    otherFeedback: '—', coordination: '—', progress: [],
+    status: '正常' as LevelStatus, reportDate: '',
+    isGroup: true, group: g,
+  })), [groups])
+
+  const filteredData = useMemo<DisplayRow[]>(() => {
+    let result = data.filter(r => !memberCodes.has(r.creditCode))
     const industry = columnFilters.find(f => f.id === 'industry')?.value as string | undefined
     if (industry) result = result.filter(r => r.industry === industry)
     if (dateStart) result = result.filter(r => r.reportDate >= dateStart)
     if (dateEnd) result = result.filter(r => r.reportDate <= dateEnd)
-    return result
-  }, [data, dateStart, dateEnd, columnFilters])
+    return [...groupRows, ...result]
+  }, [data, dateStart, dateEnd, columnFilters, memberCodes, groupRows])
 
   const pageStorageKey = 'level-page-index-' + filterKey
   const [pagination, setPagination] = useState<PaginationState>(() => {
@@ -548,7 +665,7 @@ export default function LevelTable({ title, filterKey }: {
             </DropdownMenuTrigger>
             <DropdownMenuContent align='end'>
               <DropdownMenuGroup>
-                <DropdownMenuItem onSelect={() => exportLevelAll(filteredData, title)}>导出全部</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => exportLevelAll(filteredData.filter(r => !r.isGroup), title)}>导出全部</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setExportOpen(true)}>分类导出</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setQuestionnaireOpen(true)}>导出分类问卷</DropdownMenuItem>
               </DropdownMenuGroup>
@@ -558,9 +675,13 @@ export default function LevelTable({ title, filterKey }: {
             <RefreshCwIcon className='size-4' />
             <span className='sr-only'>刷新</span>
           </Button>
-          <Button variant='outline' size='sm' onClick={() => exportLevelAll(filteredData, title)}>
+          <Button variant='outline' size='sm' onClick={() => exportLevelAll(filteredData.filter(r => !r.isGroup), title)}>
             <DownloadIcon className='size-4' />
             导出
+          </Button>
+          <Button variant='outline' size='sm' onClick={openCreateGroup}>
+            <LayersIcon className='size-4' />
+            创建集团
           </Button>
           <Button size='sm' onClick={() => fileInputRef.current?.click()}>
             <UploadIcon className='size-4' />
@@ -815,6 +936,125 @@ export default function LevelTable({ title, filterKey }: {
               <DownloadIcon className='size-4' />
               导出问卷
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 创建 / 编辑集团 Dialog */}
+      <Dialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen}>
+        <DialogContent className='sm:max-w-lg'>
+          <DialogHeader>
+            <DialogTitle>{editingGroupId ? '编辑集团' : '创建集团'}</DialogTitle>
+            <DialogDescription>填写集团名称并选择成员企业，成员企业将从市级表 / 镇级表中隐藏。</DialogDescription>
+          </DialogHeader>
+          <div className='py-2 space-y-4'>
+            <div>
+              <Label htmlFor='group-name'>集团名称</Label>
+              <Input id='group-name' className='mt-2' value={groupName} onChange={e => setGroupName(e.target.value)} placeholder='请输入集团名称' />
+            </div>
+            <div>
+              <Label>选择成员企业（{selectedMembers.size} 家）</Label>
+              <div className='relative mt-2'>
+                <SearchIcon className='text-muted-foreground absolute left-2.5 top-2.5 size-4' />
+                <Input
+                  className='pl-8'
+                  placeholder='按名称或信用代码筛选...'
+                  value={memberSearch}
+                  onChange={e => setMemberSearch(e.target.value)}
+                />
+              </div>
+              <div className='mt-2 max-h-72 overflow-y-auto rounded-md border divide-y'>
+                {(() => {
+                  const otherGroupCodes = new Set<string>()
+                  for (const g of groups) if (g.id !== editingGroupId) for (const c of g.members) otherGroupCodes.add(c)
+                  const seen = new Set<string>()
+                  const q = memberSearch.trim().toLowerCase()
+                  const candidates = data.filter(r => {
+                    if (!r.creditCode || otherGroupCodes.has(r.creditCode) || seen.has(r.creditCode)) return false
+                    seen.add(r.creditCode)
+                    if (q && !r.companyName.toLowerCase().includes(q) && !r.creditCode.toLowerCase().includes(q)) return false
+                    return true
+                  })
+                  if (candidates.length === 0) {
+                    return <p className='px-3 py-4 text-sm text-muted-foreground text-center'>{q ? '未找到匹配的企业' : '暂无可选企业'}</p>
+                  }
+                  return candidates.map(r => (
+                    <label key={r.creditCode} className='flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/50'>
+                      <Checkbox checked={selectedMembers.has(r.creditCode)} onCheckedChange={() => toggleMember(r.creditCode)} />
+                      <div className='flex flex-col'>
+                        <span className='text-sm font-medium'>{r.companyName}</span>
+                        <span className='text-xs text-muted-foreground'>{r.industry} · {r.township}</span>
+                      </div>
+                    </label>
+                  ))
+                })()}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant='outline' onClick={() => setGroupDialogOpen(false)}>取消</Button>
+            <Button disabled={!groupName.trim() || selectedMembers.size === 0} onClick={handleSaveGroup}>
+              {editingGroupId ? '保存' : '创建'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 查看集团成员 Dialog */}
+      <Dialog open={viewGroup !== null} onOpenChange={open => { if (!open) setViewGroup(null) }}>
+        <DialogContent className='sm:max-w-2xl max-h-[80vh] overflow-y-auto'>
+          <DialogHeader>
+            <DialogTitle>{viewGroup?.name}</DialogTitle>
+            <DialogDescription>集团成员企业 · 共 {viewGroup?.members.length ?? 0} 家</DialogDescription>
+          </DialogHeader>
+          {viewGroup && (
+            <div className='py-2'>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>企业名称</TableHead>
+                    <TableHead>行业</TableHead>
+                    <TableHead>街道乡镇</TableHead>
+                    <TableHead>社会信用代码</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {viewGroup.members.map(code => {
+                    const rec = recordByCode.get(code)
+                    return (
+                      <TableRow key={code}>
+                        <TableCell>
+                          {rec
+                            ? <Link to={`/app/screening/${rec.id}`} className='text-primary hover:underline'>{rec.companyName}</Link>
+                            : <span className='text-muted-foreground'>未知企业</span>}
+                        </TableCell>
+                        <TableCell className='text-muted-foreground'>{rec?.industry ?? '—'}</TableCell>
+                        <TableCell className='text-muted-foreground'>{rec?.township ?? '—'}</TableCell>
+                        <TableCell className='font-mono text-sm text-muted-foreground'>{code}</TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          <DialogFooter className='sm:justify-between'>
+            <Button variant='ghost' className='text-red-500 hover:text-red-700 hover:bg-red-50' onClick={() => viewGroup && handleDeleteGroup(viewGroup.id)}>
+              <Trash2Icon className='size-4' />
+              解散集团
+            </Button>
+            <div className='flex gap-2'>
+              <Button variant='outline' onClick={() => setViewGroup(null)}>关闭</Button>
+              {viewGroup && (
+                <Button variant='outline' asChild>
+                  <Link to={`/app/group/${viewGroup.id}`}>查看详情</Link>
+                </Button>
+              )}
+              <Button onClick={() => viewGroup && openEditGroup(viewGroup)}>
+                <PlusIcon className='size-4' />
+                编辑成员
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

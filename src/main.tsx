@@ -9,6 +9,7 @@ import ScreeningPage from "./pages/screening"
 import ScreeningDetailPage from "./pages/screening-detail"
 import CityPage from "./pages/city"
 import TownPage from "./pages/town"
+import GroupDetailPage from "./pages/group-detail"
 import SettingsPage from "./pages/settings"
 import AdvancedSettingsPage from "./pages/advanced-settings"
 
@@ -35,6 +36,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="screening/:id" element={<ScreeningDetailPage />} />
           <Route path="city" element={<CityPage />} />
           <Route path="town" element={<TownPage />} />
+          <Route path="group/:id" element={<GroupDetailPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="advanced-settings" element={<AdvancedSettingsPage />} />
         </Route>
