@@ -80,7 +80,18 @@ import { usePagination } from '@/hooks/use-pagination'
 import { PageJump } from '@/components/page-jump'
 import { getIndustries, getTownships } from '@/db/dict'
 import { SCREENING_STORAGE_KEY, SCREENING_DETAIL_KEY } from '@/db/database'
-import { importScreeningExcel, exportScreeningAll, exportScreeningZip } from '@/lib/excel'
+import { importScreeningExcel, exportScreeningAll, exportScreeningZip, type ImportedScreeningRecord } from '@/lib/excel'
+
+type ReportSourceItem = ImportedScreeningRecord['reportSource']
+interface StoredDetail {
+  tax?: ImportedScreeningRecord['tax']
+  social?: ImportedScreeningRecord['social']
+  power?: ImportedScreeningRecord['power']
+  water?: ImportedScreeningRecord['water']
+  loan?: ImportedScreeningRecord['loan']
+  reportSource?: ReportSourceItem
+  reportSources?: ReportSourceItem[]
+}
 
 const industryIconMap: Record<string, LucideIcon> = {
   '信息技术': MonitorIcon,
@@ -269,20 +280,12 @@ export const demoData: ScreeningRecord[] = [
   { id: '10', creditCode: '91110107MA10XXXXAK', companyName: '新世纪教育培训公司', industry: '教育', township: '天通苑街道', isAboveScale: false, isOperating: true, inTownLevel: false, inCityLevel: false, inOther: false, reportDate: '2026-03-30', reportCount: 1 },
 ]
 
-function recalcReportCounts(records: ScreeningRecord[]): ScreeningRecord[] {
-  const countMap = new Map<string, number>()
-  for (const r of records) {
-    if (r.creditCode) countMap.set(r.creditCode, (countMap.get(r.creditCode) ?? 0) + 1)
-  }
-  return records.map(r => ({ ...r, reportCount: r.creditCode ? (countMap.get(r.creditCode) ?? 1) : r.reportCount }))
-}
-
 function loadScreeningData(): ScreeningRecord[] {
   const saved = localStorage.getItem(SCREENING_STORAGE_KEY)
   if (saved) {
-    try { return recalcReportCounts(JSON.parse(saved)) } catch { /* fall through */ }
+    try { return JSON.parse(saved) } catch { /* fall through */ }
   }
-  return recalcReportCounts(demoData)
+  return demoData
 }
 
 function saveScreeningData(records: ScreeningRecord[]) {
@@ -350,26 +353,79 @@ export default function ScreeningPage() {
     const files = e.target.files
     if (!files || files.length === 0) return
     try {
-      const existingDetail: Record<string, unknown> = (() => {
+      // 收集所有文件中的导入记录
+      const imported: ImportedScreeningRecord[] = []
+      for (let f = 0; f < files.length; f++) {
+        imported.push(...await importScreeningExcel(files[f]))
+      }
+
+      const detail: Record<string, StoredDetail> = (() => {
         const s = localStorage.getItem(SCREENING_DETAIL_KEY)
         if (s) try { return JSON.parse(s) } catch { /* */ }
         return {}
       })()
-      const allNewRecords: ScreeningRecord[] = []
-      for (let f = 0; f < files.length; f++) {
-        const imported = await importScreeningExcel(files[f])
-        for (let i = 0; i < imported.length; i++) {
-          const r = imported[i]
-          const id = `imp-${Date.now()}-${f}-${i}`
-          existingDetail[id] = {
-            tax: r.tax,
-            social: r.social,
-            power: r.power,
-            water: r.water,
-            loan: r.loan,
-            reportSource: r.reportSource,
-          }
-          allNewRecords.push({
+
+      // 按年合并：不同年份累计，相同年份取最新导入值
+      const mergeByYear = <T extends { year: number }>(prev: T[] | undefined, next: T[] | undefined): T[] => {
+        const map = new Map<number, T>()
+        for (const item of prev ?? []) map.set(item.year, item)
+        for (const item of next ?? []) map.set(item.year, item)
+        return Array.from(map.values()).sort((a, b) => a.year - b.year)
+      }
+      // 追加一条上报记录、按年累计财务数据，返回累计上报条数
+      const appendSource = (id: string, r: ImportedScreeningRecord): number => {
+        const d = detail[id] ?? {}
+        const prevSources = Array.isArray(d.reportSources)
+          ? d.reportSources
+          : (d.reportSource ? [d.reportSource] : [])
+        const sources = [...prevSources, r.reportSource]
+        detail[id] = {
+          tax: mergeByYear(d.tax, r.tax),
+          social: mergeByYear(d.social, r.social),
+          power: mergeByYear(d.power, r.power),
+          water: mergeByYear(d.water, r.water),
+          loan: mergeByYear(d.loan, r.loan),
+          reportSources: sources,
+        }
+        return sources.length
+      }
+      // 用最新导入的基本信息覆盖
+      const mergeBasic = (rec: ScreeningRecord, r: ImportedScreeningRecord, count: number): ScreeningRecord => ({
+        ...rec,
+        companyName: r.companyName,
+        industry: r.industry,
+        township: r.township,
+        isAboveScale: r.isAboveScale,
+        isOperating: r.feedback.isOperating,
+        inTownLevel: r.feedback.inTownLevel,
+        inCityLevel: r.feedback.inCityLevel,
+        reportDate: r.reportDate,
+        reportCount: count,
+      })
+
+      const result = data.map(r => ({ ...r }))
+      const codeToIdx = new Map<string, number>()
+      result.forEach((r, i) => { if (r.creditCode && !codeToIdx.has(r.creditCode)) codeToIdx.set(r.creditCode, i) })
+      const newRecords: ScreeningRecord[] = []
+      const newCodeToIdx = new Map<string, number>()
+      const ts = Date.now()
+
+      imported.forEach((r, i) => {
+        if (r.creditCode && codeToIdx.has(r.creditCode)) {
+          // 与已有记录合并
+          const idx = codeToIdx.get(r.creditCode)!
+          const count = appendSource(result[idx].id, r)
+          result[idx] = mergeBasic(result[idx], r, count)
+        } else if (r.creditCode && newCodeToIdx.has(r.creditCode)) {
+          // 与本次导入中已出现的同代码记录合并
+          const nIdx = newCodeToIdx.get(r.creditCode)!
+          const count = appendSource(newRecords[nIdx].id, r)
+          newRecords[nIdx] = mergeBasic(newRecords[nIdx], r, count)
+        } else {
+          // 新建记录
+          const id = `imp-${ts}-${i}`
+          const count = appendSource(id, r)
+          const rec: ScreeningRecord = {
             id,
             creditCode: r.creditCode,
             companyName: r.companyName,
@@ -381,13 +437,16 @@ export default function ScreeningPage() {
             inCityLevel: r.feedback.inCityLevel,
             inOther: false,
             reportDate: r.reportDate,
-            reportCount: r.reportCount,
-          })
+            reportCount: count,
+          }
+          newRecords.push(rec)
+          if (r.creditCode) newCodeToIdx.set(r.creditCode, newRecords.length - 1)
         }
-      }
-      localStorage.setItem(SCREENING_DETAIL_KEY, JSON.stringify(existingDetail))
-      setData(prev => recalcReportCounts([...allNewRecords, ...prev]))
-      setImportCount(allNewRecords.length)
+      })
+
+      localStorage.setItem(SCREENING_DETAIL_KEY, JSON.stringify(detail))
+      setData([...newRecords, ...result])
+      setImportCount(imported.length)
       setTimeout(() => setImportCount(null), 3000)
     } catch (err) {
       console.error('导入失败:', err)
@@ -422,9 +481,11 @@ export default function ScreeningPage() {
     const saved = localStorage.getItem(SCREENING_DETAIL_KEY)
     if (saved) {
       try {
-        const all = JSON.parse(saved) as Record<string, { reportSource?: { department?: string } }>
+        const all = JSON.parse(saved) as Record<string, StoredDetail>
         for (const id of Object.keys(all)) {
-          const dept = all[id]?.reportSource?.department
+          const d = all[id]
+          const sources = Array.isArray(d?.reportSources) ? d.reportSources : (d?.reportSource ? [d.reportSource] : [])
+          const dept = sources.length ? sources[sources.length - 1]?.department : undefined
           if (dept) map[id] = dept
         }
       } catch { /* ignore */ }
@@ -434,10 +495,20 @@ export default function ScreeningPage() {
 
   const columns = createColumns(handleOpenFeedback, handleDelete, (id: string) => deptMap[id] ?? '')
 
-  const [pagination, setPagination] = useState<PaginationState>({
-    pageIndex: 0,
-    pageSize,
+  const PAGE_STORAGE_KEY = 'screening-page-index'
+  const [pagination, setPagination] = useState<PaginationState>(() => {
+    const saved = sessionStorage.getItem(PAGE_STORAGE_KEY)
+    const idx = saved ? parseInt(saved, 10) : 0
+    return { pageIndex: Number.isNaN(idx) ? 0 : idx, pageSize }
   })
+
+  const handlePaginationChange = (updater: PaginationState | ((prev: PaginationState) => PaginationState)) => {
+    setPagination(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      sessionStorage.setItem(PAGE_STORAGE_KEY, String(next.pageIndex))
+      return next
+    })
+  }
 
   const filteredData = useMemo(() => {
     let result = data
@@ -470,7 +541,7 @@ export default function ScreeningPage() {
     getFacetedMinMaxValues: getFacetedMinMaxValues(),
     enableSortingRemoval: false,
     getPaginationRowModel: getPaginationRowModel(),
-    onPaginationChange: setPagination,
+    onPaginationChange: handlePaginationChange,
     onGlobalFilterChange: setGlobalFilter,
     onColumnFiltersChange: setColumnFilters,
   })

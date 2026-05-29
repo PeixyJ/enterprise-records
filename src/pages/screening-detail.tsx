@@ -61,6 +61,7 @@ interface StoredDetail {
   water?: { year: number; value?: number }[]
   loan?: { year: number; value?: number }[]
   reportSource?: { department?: string; warningReason?: string; issueDate?: string; amount?: number; other?: string }
+  reportSources?: { department?: string; warningReason?: string; issueDate?: string; amount?: number; other?: string }[]
 }
 
 function loadDetailData(id: string): StoredDetail | null {
@@ -95,17 +96,20 @@ function toSimpleData(arr?: { year: number; value?: number }[]): SimpleYearData[
 }
 
 function toReportLogs(detail: StoredDetail | null): ReportLog[] {
-  if (!detail?.reportSource) return []
-  const src = detail.reportSource
-  if (!src.department && !src.warningReason && !src.issueDate && src.amount == null) return []
-  return [{
-    infoSource: src.department ?? '',
-    department: src.department ?? '',
-    warningReason: src.warningReason ?? '',
-    issueDate: src.issueDate ?? '',
-    amount: src.amount ?? 0,
-    other: src.other ?? '',
-  }]
+  if (!detail) return []
+  const sources = detail.reportSources && detail.reportSources.length
+    ? detail.reportSources
+    : (detail.reportSource ? [detail.reportSource] : [])
+  return sources
+    .filter(src => src.department || src.warningReason || src.issueDate || src.amount != null)
+    .map(src => ({
+      infoSource: src.department ?? '',
+      department: src.department ?? '',
+      warningReason: src.warningReason ?? '',
+      issueDate: src.issueDate ?? '',
+      amount: src.amount ?? 0,
+      other: src.other ?? '',
+    }))
 }
 
 // ── 统计小卡片 ──────────────────────────────────────

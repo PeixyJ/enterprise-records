@@ -13,6 +13,9 @@ import {
   UploadIcon,
   DownloadIcon,
   RefreshCwIcon,
+  LayersIcon,
+  PlusIcon,
+  Trash2Icon,
 } from 'lucide-react'
 
 import type { ColumnDef, ColumnFiltersState, PaginationState } from '@tanstack/react-table'
@@ -461,7 +464,20 @@ export default function LevelTable({ title, filterKey }: {
     return result
   }, [data, dateStart, dateEnd, columnFilters])
 
-  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize })
+  const pageStorageKey = 'level-page-index-' + filterKey
+  const [pagination, setPagination] = useState<PaginationState>(() => {
+    const saved = sessionStorage.getItem(pageStorageKey)
+    const idx = saved ? parseInt(saved, 10) : 0
+    return { pageIndex: Number.isNaN(idx) ? 0 : idx, pageSize }
+  })
+
+  const handlePaginationChange = (updater: PaginationState | ((prev: PaginationState) => PaginationState)) => {
+    setPagination(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      sessionStorage.setItem(pageStorageKey, String(next.pageIndex))
+      return next
+    })
+  }
 
   const table = useReactTable({
     data: filteredData,
@@ -475,7 +491,7 @@ export default function LevelTable({ title, filterKey }: {
     getFacetedMinMaxValues: getFacetedMinMaxValues(),
     enableSortingRemoval: false,
     getPaginationRowModel: getPaginationRowModel(),
-    onPaginationChange: setPagination,
+    onPaginationChange: handlePaginationChange,
     onGlobalFilterChange: setGlobalFilter,
     onColumnFiltersChange: setColumnFilters,
   })
