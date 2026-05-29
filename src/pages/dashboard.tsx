@@ -16,16 +16,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { SCREENING_STORAGE_KEY } from '@/db/database'
-import { type ScreeningRecord, demoData } from './screening'
+import { loadScreening } from '@/db/screening-store'
+import { type ScreeningRecord } from './screening'
 import { loadAllReminders, isOverdue } from '@/lib/reminders'
 
 // ── 数据加载 ──────────────────────────────────────
 
 function loadData(): ScreeningRecord[] {
-  const saved = localStorage.getItem(SCREENING_STORAGE_KEY)
-  if (saved) try { return JSON.parse(saved) } catch { /* */ }
-  return demoData
+  return loadScreening()
 }
 
 // ── 统计卡片 ──────────────────────────────────────

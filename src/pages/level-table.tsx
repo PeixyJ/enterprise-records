@@ -67,8 +67,12 @@ import { Separator } from '@/components/ui/separator'
 import { usePagination } from '@/hooks/use-pagination'
 import { PageJump } from '@/components/page-jump'
 import { getIndustries, getTownships } from '@/db/dict'
-import { SCREENING_STORAGE_KEY } from '@/db/database'
-import { type ScreeningRecord, demoData, getIndustryIcon } from './screening'
+import { loadScreening } from '@/db/screening-store'
+import { loadLevelExtras, saveLevelExtras, loadLevelExtraByCode } from '@/db/level-store'
+import { loadGroups, saveGroups as dbSaveGroups } from '@/db/group-store'
+import { type ScreeningRecord, getIndustryIcon } from './screening'
+
+export { loadGroups } // 兼容旧引用（如集团详情页）
 import { importLevelExcel, exportLevelAll, exportLevelZip, exportLevelQuestionnaire } from '@/lib/excel'
 import { DatePicker } from '@/components/date-picker'
 
@@ -194,17 +198,8 @@ export type LevelExtra = Omit<LevelRecord, 'id' | 'creditCode' | 'companyName' |
 
 // 供企业详情页复用：按记录加载企业进展信息
 export function loadProgressInfo(id: string, creditCode: string): LevelExtra {
-  const keys: Array<'inCityLevel' | 'inTownLevel' | 'inOther'> = ['inCityLevel', 'inTownLevel', 'inOther']
-  for (const k of keys) {
-    const saved = localStorage.getItem(LEVEL_STORAGE_PREFIX + k)
-    if (saved) {
-      try {
-        const all = JSON.parse(saved) as Record<string, Partial<LevelExtra>>
-        const extra = creditCode ? all[creditCode] : undefined
-        if (extra) return { ...defaultExtra, ...extra }
-      } catch { /* ignore */ }
-    }
-  }
+  const extra = loadLevelExtraByCode(creditCode)
+  if (extra) return { ...defaultExtra, ...extra }
   const demo = demoExtras[id]
   if (demo) return demo
   return defaultExtra
@@ -227,11 +222,7 @@ function deriveStatus(progress: ProgressEntry[]): LevelStatus {
 }
 
 function loadScreeningData(): ScreeningRecord[] {
-  const saved = localStorage.getItem(SCREENING_STORAGE_KEY)
-  if (saved) {
-    try { return JSON.parse(saved) } catch { /* fall through */ }
-  }
-  return demoData
+  return loadScreening()
 }
 
 function toLevelRecords(records: ScreeningRecord[], filterKey: 'inCityLevel' | 'inTownLevel' | 'inOther'): LevelRecord[] {
@@ -255,14 +246,6 @@ export interface GroupDef {
   id: string
   name: string
   members: string[] // 成员企业的社会信用代码
-}
-
-const GROUPS_STORAGE_KEY = 'enterprise-records-groups'
-
-export function loadGroups(): GroupDef[] {
-  const saved = localStorage.getItem(GROUPS_STORAGE_KEY)
-  if (saved) try { return JSON.parse(saved) } catch { /* */ }
-  return []
 }
 
 // 表格行：普通企业行或集团行
@@ -386,23 +369,16 @@ function createColumns(onViewProgress: (record: LevelRecord) => void, onViewDeta
 
 // ── 通用级别表组件 ──────────────────────────────────
 
-const LEVEL_STORAGE_PREFIX = 'enterprise-records-level-'
-
 export default function LevelTable({ title, filterKey }: {
   title: string
   filterKey: 'inCityLevel' | 'inTownLevel' | 'inOther'
 }) {
   const pageSize = 8
-  const storageKey = LEVEL_STORAGE_PREFIX + filterKey
 
   const baseData = useMemo(() => toLevelRecords(loadScreeningData(), filterKey), [filterKey])
 
-  // 从 localStorage 加载导入的扩展数据，合并到 baseData
-  const [importedExtras, setImportedExtras] = useState<Record<string, Partial<LevelRecord>>>(() => {
-    const saved = localStorage.getItem(storageKey)
-    if (saved) try { return JSON.parse(saved) } catch { /* */ }
-    return {}
-  })
+  // 从数据库加载扩展数据，合并到 baseData
+  const [importedExtras, setImportedExtras] = useState<Record<string, Partial<LevelExtra>>>(() => loadLevelExtras(filterKey))
 
   const data = useMemo(() => baseData.map(r => {
     const extra = importedExtras[r.creditCode]
@@ -477,7 +453,7 @@ export default function LevelTable({ title, filterKey }: {
         }
       }
       setImportedExtras(newExtras)
-      localStorage.setItem(storageKey, JSON.stringify(newExtras))
+      saveLevelExtras(filterKey, newExtras)
       setImportCount(count)
       setTimeout(() => setImportCount(null), 3000)
     } catch (err) {
@@ -499,7 +475,7 @@ export default function LevelTable({ title, filterKey }: {
   const [groups, setGroups] = useState<GroupDef[]>(loadGroups)
   const saveGroups = (next: GroupDef[]) => {
     setGroups(next)
-    localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(next))
+    dbSaveGroups(next)
   }
 
   // 全部企业（按社会信用代码索引），用于查看集团成员的基本信息

@@ -1,4 +1,6 @@
-// 企业的镇级 / 市级加入与离开事件时间轴，按企业记录 id 存储多条
+// 企业的镇级 / 市级加入与离开事件时间轴，存储于 SQLite（level_event 表）
+
+import { queryRows, runWrite, runSQL } from '@/db/database'
 
 export type LevelEventType = 'joinTown' | 'leaveTown' | 'joinCity' | 'leaveCity'
 
@@ -16,14 +18,6 @@ export const LEVEL_EVENT_LABEL: Record<LevelEventType, string> = {
   leaveCity: '离开市级',
 }
 
-const LEVEL_TIMELINE_KEY = 'enterprise-records-level-timeline'
-
-function loadAll(): Record<string, LevelEvent[]> {
-  const s = localStorage.getItem(LEVEL_TIMELINE_KEY)
-  if (s) try { return JSON.parse(s) } catch { /* */ }
-  return {}
-}
-
 export function newEventId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 }
@@ -36,22 +30,31 @@ export function todayStr(): string {
   return `${y}-${m}-${day}`
 }
 
+function rowToEvent(r: Record<string, unknown>): LevelEvent {
+  return {
+    id: r.id as string,
+    type: r.type as LevelEventType,
+    date: (r.date as string) ?? '',
+    note: r.note == null ? undefined : (r.note as string),
+  }
+}
+
 export function loadLevelEvents(recordId: string): LevelEvent[] {
-  return loadAll()[recordId] ?? []
+  return queryRows('SELECT * FROM level_event WHERE record_id = ? ORDER BY date, rowid', [recordId]).map(rowToEvent)
 }
 
 export function saveLevelEvents(recordId: string, events: LevelEvent[]) {
-  const all = loadAll()
-  if (events.length) all[recordId] = events
-  else delete all[recordId]
-  localStorage.setItem(LEVEL_TIMELINE_KEY, JSON.stringify(all))
+  runWrite(d => {
+    d.run('DELETE FROM level_event WHERE record_id = ?', [recordId] as never[])
+    for (const e of events) {
+      d.run('INSERT INTO level_event (id, record_id, type, date, note) VALUES (?,?,?,?,?)',
+        [e.id, recordId, e.type, e.date, e.note ?? null] as never[])
+    }
+  })
 }
 
 // 追加一条事件（供初筛表切换列入镇级/市级时自动记录）
 export function addLevelEvent(recordId: string, type: LevelEventType, date: string) {
-  const all = loadAll()
-  const list = all[recordId] ?? []
-  list.push({ id: newEventId(), type, date })
-  all[recordId] = list
-  localStorage.setItem(LEVEL_TIMELINE_KEY, JSON.stringify(all))
+  runSQL('INSERT INTO level_event (id, record_id, type, date, note) VALUES (?,?,?,?,?)',
+    [newEventId(), recordId, type, date, null])
 }

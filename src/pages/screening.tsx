@@ -80,20 +80,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { usePagination } from '@/hooks/use-pagination'
 import { PageJump } from '@/components/page-jump'
 import { getIndustries, getTownships } from '@/db/dict'
-import { SCREENING_STORAGE_KEY, SCREENING_DETAIL_KEY } from '@/db/database'
+import { loadScreening, saveScreening, loadAllDetail, saveAllDetail, type StoredDetail } from '@/db/screening-store'
 import { importScreeningExcel, exportScreeningAll, exportScreeningZip, type ImportedScreeningRecord } from '@/lib/excel'
 import { addLevelEvent, todayStr } from '@/lib/level-timeline'
-
-type ReportSourceItem = ImportedScreeningRecord['reportSource']
-interface StoredDetail {
-  tax?: ImportedScreeningRecord['tax']
-  social?: ImportedScreeningRecord['social']
-  power?: ImportedScreeningRecord['power']
-  water?: ImportedScreeningRecord['water']
-  loan?: ImportedScreeningRecord['loan']
-  reportSource?: ReportSourceItem
-  reportSources?: ReportSourceItem[]
-}
 
 const industryIconMap: Record<string, LucideIcon> = {
   '信息技术': MonitorIcon,
@@ -282,26 +271,14 @@ export const demoData: ScreeningRecord[] = [
   { id: '10', creditCode: '91110107MA10XXXXAK', companyName: '新世纪教育培训公司', industry: '教育', township: '天通苑街道', isAboveScale: false, isOperating: true, inTownLevel: false, inCityLevel: false, inOther: false, reportDate: '2026-03-30', reportCount: 1 },
 ]
 
-function loadScreeningData(): ScreeningRecord[] {
-  const saved = localStorage.getItem(SCREENING_STORAGE_KEY)
-  if (saved) {
-    try { return JSON.parse(saved) } catch { /* fall through */ }
-  }
-  return demoData
-}
-
-function saveScreeningData(records: ScreeningRecord[]) {
-  localStorage.setItem(SCREENING_STORAGE_KEY, JSON.stringify(records))
-}
-
 export default function ScreeningPage() {
   const pageSize = 8
-  const [data, setDataRaw] = useState<ScreeningRecord[]>(loadScreeningData)
+  const [data, setDataRaw] = useState<ScreeningRecord[]>(loadScreening)
 
   const setData = (updater: ScreeningRecord[] | ((prev: ScreeningRecord[]) => ScreeningRecord[])) => {
     setDataRaw(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater
-      saveScreeningData(next)
+      saveScreening(next)
       return next
     })
   }
@@ -369,11 +346,7 @@ export default function ScreeningPage() {
         imported.push(...await importScreeningExcel(files[f]))
       }
 
-      const detail: Record<string, StoredDetail> = (() => {
-        const s = localStorage.getItem(SCREENING_DETAIL_KEY)
-        if (s) try { return JSON.parse(s) } catch { /* */ }
-        return {}
-      })()
+      const detail: Record<string, StoredDetail> = loadAllDetail()
 
       // 按年合并：不同年份累计，相同年份取最新导入值
       const mergeByYear = <T extends { year: number }>(prev: T[] | undefined, next: T[] | undefined): T[] => {
@@ -385,9 +358,7 @@ export default function ScreeningPage() {
       // 追加一条上报记录、按年累计财务数据，返回累计上报条数
       const appendSource = (id: string, r: ImportedScreeningRecord): number => {
         const d = detail[id] ?? {}
-        const prevSources = Array.isArray(d.reportSources)
-          ? d.reportSources
-          : (d.reportSource ? [d.reportSource] : [])
+        const prevSources = d.reportSources ?? []
         const sources = [...prevSources, r.reportSource]
         detail[id] = {
           tax: mergeByYear(d.tax, r.tax),
@@ -454,7 +425,7 @@ export default function ScreeningPage() {
         }
       })
 
-      localStorage.setItem(SCREENING_DETAIL_KEY, JSON.stringify(detail))
+      saveAllDetail(detail)
       setData([...newRecords, ...result])
       setImportCount(imported.length)
       setTimeout(() => setImportCount(null), 3000)
@@ -489,17 +460,11 @@ export default function ScreeningPage() {
 
   const deptMap = useMemo(() => {
     const map: Record<string, string> = {}
-    const saved = localStorage.getItem(SCREENING_DETAIL_KEY)
-    if (saved) {
-      try {
-        const all = JSON.parse(saved) as Record<string, StoredDetail>
-        for (const id of Object.keys(all)) {
-          const d = all[id]
-          const sources = Array.isArray(d?.reportSources) ? d.reportSources : (d?.reportSource ? [d.reportSource] : [])
-          const dept = sources.length ? sources[sources.length - 1]?.department : undefined
-          if (dept) map[id] = dept
-        }
-      } catch { /* ignore */ }
+    const all = loadAllDetail()
+    for (const id of Object.keys(all)) {
+      const sources = all[id].reportSources ?? []
+      const dept = sources.length ? sources[sources.length - 1]?.department : undefined
+      if (dept) map[id] = dept
     }
     return map
   }, [data])

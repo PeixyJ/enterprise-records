@@ -28,8 +28,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { SCREENING_STORAGE_KEY, SCREENING_DETAIL_KEY } from '@/db/database'
-import { type ScreeningRecord, demoData, getIndustryIcon } from './screening'
+import { loadScreening, loadDetail, type StoredDetail } from '@/db/screening-store'
+import { type ScreeningRecord, getIndustryIcon } from './screening'
 import { loadProgressInfo, type LevelExtra } from './level-table'
 import { type TimeNode, loadReminders, saveReminders, newNodeId, isOverdue } from '@/lib/reminders'
 import { type LevelEvent, type LevelEventType, LEVEL_EVENT_LABEL, loadLevelEvents, saveLevelEvents, newEventId } from '@/lib/level-timeline'
@@ -61,26 +61,6 @@ interface ReportLog {
   other: string
 }
 
-// 从 localStorage 加载导入时保存的详细数据
-interface StoredDetail {
-  tax?: { year: number; revenue?: number; profit?: number; taxPayable?: number; assets?: number; liabilities?: number; debtRatio?: number }[]
-  social?: { year: number; value?: number }[]
-  power?: { year: number; value?: number }[]
-  water?: { year: number; value?: number }[]
-  loan?: { year: number; value?: number }[]
-  reportSource?: { department?: string; warningReason?: string; issueDate?: string; amount?: number; other?: string }
-  reportSources?: { department?: string; warningReason?: string; issueDate?: string; amount?: number; other?: string }[]
-}
-
-export function loadDetailData(id: string): StoredDetail | null {
-  const saved = localStorage.getItem(SCREENING_DETAIL_KEY)
-  if (!saved) return null
-  try {
-    const all = JSON.parse(saved)
-    return all[id] ?? null
-  } catch { return null }
-}
-
 export function toTaxData(detail: StoredDetail | null): TaxYearData[] {
   if (!detail?.tax || detail.tax.length === 0) return []
   return detail.tax
@@ -105,9 +85,7 @@ export function toSimpleData(arr?: { year: number; value?: number }[]): SimpleYe
 
 function toReportLogs(detail: StoredDetail | null): ReportLog[] {
   if (!detail) return []
-  const sources = detail.reportSources && detail.reportSources.length
-    ? detail.reportSources
-    : (detail.reportSource ? [detail.reportSource] : [])
+  const sources = detail.reportSources ?? []
   return sources
     .filter(src => src.department || src.warningReason || src.issueDate || src.amount != null)
     .map(src => ({
@@ -184,18 +162,14 @@ export default function ScreeningDetailPage() {
     if (window.history.length > 1) navigate(-1)
     else navigate('/app/screening')
   }
-  const allData: ScreeningRecord[] = (() => {
-    const saved = localStorage.getItem(SCREENING_STORAGE_KEY)
-    if (saved) try { return JSON.parse(saved) } catch { /* */ }
-    return demoData
-  })()
+  const allData: ScreeningRecord[] = loadScreening()
   const record = allData.find(r => r.id === id)
 
   // 编辑状态
   const [editingTab, setEditingTab] = useState<string | null>(null)
 
-  // 从 localStorage 加载该企业的详细数据
-  const detail = id ? loadDetailData(id) : null
+  // 从数据库加载该企业的详细数据
+  const detail = id ? loadDetail(id) : null
 
   // 各 Tab 数据状态（使用真实导入数据，无数据则为空数组）
   const [basicData, setBasicData] = useState(() => record ? {

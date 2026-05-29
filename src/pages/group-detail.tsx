@@ -15,16 +15,10 @@ import {
 } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
-import { SCREENING_STORAGE_KEY } from '@/db/database'
-import { type ScreeningRecord, demoData, getIndustryIcon } from './screening'
+import { loadScreening, loadDetail } from '@/db/screening-store'
+import { type ScreeningRecord, getIndustryIcon } from './screening'
 import { loadGroups, loadProgressInfo } from './level-table'
-import { loadDetailData, toTaxData, toSimpleData, fmt, type SimpleYearData } from './screening-detail'
-
-function loadAllScreening(): ScreeningRecord[] {
-  const saved = localStorage.getItem(SCREENING_STORAGE_KEY)
-  if (saved) try { return JSON.parse(saved) } catch { /* */ }
-  return demoData
-}
+import { toTaxData, toSimpleData, fmt, type SimpleYearData } from './screening-detail'
 
 // 把中文日期 "2026年3月15日" 或 ISO 日期转为可排序数值
 function dateKey(s: string): number {
@@ -53,7 +47,7 @@ export default function GroupDetailPage() {
 
   const recordByCode = useMemo(() => {
     const m = new Map<string, ScreeningRecord>()
-    for (const r of loadAllScreening()) if (r.creditCode) m.set(r.creditCode, r)
+    for (const r of loadScreening()) if (r.creditCode) m.set(r.creditCode, r)
     return m
   }, [])
 
@@ -80,7 +74,7 @@ export default function GroupDetailPage() {
   const [selectedCode, setSelectedCode] = useState('')
   const effectiveCode = selectedCode || (members[0]?.creditCode ?? '')
   const selectedRecord = effectiveCode ? recordByCode.get(effectiveCode) : undefined
-  const detail = selectedRecord ? loadDetailData(selectedRecord.id) : null
+  const detail = selectedRecord ? loadDetail(selectedRecord.id) : null
   const taxData = toTaxData(detail)
   const socialData = toSimpleData(detail?.social)
   const powerData = toSimpleData(detail?.power)

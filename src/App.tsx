@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { Outlet } from "react-router"
 import { getDatabase } from "@/db/database"
+import { migrateFromLocalStorage } from "@/db/migrate"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -23,7 +24,10 @@ function App() {
   const [dbReady, setDbReady] = useState(false)
 
   useEffect(() => {
-    getDatabase().then(() => setDbReady(true))
+    getDatabase().then(() => {
+      migrateFromLocalStorage()
+      setDbReady(true)
+    })
   }, [])
 
   if (!dbReady) {

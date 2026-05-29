@@ -96,6 +96,90 @@ function initTables(): void {
     sort_order INTEGER DEFAULT 0
   )`)
 
+  // ── 业务数据表（规范化）──────────────────────────────
+  db.run(`CREATE TABLE IF NOT EXISTS screening (
+    id TEXT PRIMARY KEY,
+    credit_code TEXT,
+    company_name TEXT,
+    industry TEXT,
+    township TEXT,
+    is_above_scale INTEGER DEFAULT 0,
+    is_operating INTEGER DEFAULT 0,
+    in_town_level INTEGER DEFAULT 0,
+    in_city_level INTEGER DEFAULT 0,
+    in_other INTEGER DEFAULT 0,
+    report_date TEXT,
+    report_count INTEGER DEFAULT 0,
+    sort_order INTEGER DEFAULT 0
+  )`)
+
+  db.run(`CREATE TABLE IF NOT EXISTS screening_tax (
+    screening_id TEXT,
+    year INTEGER,
+    revenue REAL, profit REAL, tax_payable REAL, assets REAL, liabilities REAL, debt_ratio REAL,
+    PRIMARY KEY (screening_id, year)
+  )`)
+
+  db.run(`CREATE TABLE IF NOT EXISTS screening_metric (
+    screening_id TEXT,
+    kind TEXT,
+    year INTEGER,
+    value REAL,
+    PRIMARY KEY (screening_id, kind, year)
+  )`)
+
+  db.run(`CREATE TABLE IF NOT EXISTS report_source (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    screening_id TEXT,
+    seq INTEGER,
+    department TEXT, warning_reason TEXT, issue_date TEXT, amount REAL, other TEXT
+  )`)
+
+  db.run(`CREATE TABLE IF NOT EXISTS level_extra (
+    level TEXT,
+    credit_code TEXT,
+    business_status TEXT, asset_status TEXT, debt_status TEXT, staff_status TEXT,
+    other_feedback TEXT, coordination TEXT,
+    PRIMARY KEY (level, credit_code)
+  )`)
+
+  db.run(`CREATE TABLE IF NOT EXISTS level_progress (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    level TEXT, credit_code TEXT, seq INTEGER,
+    date TEXT, content TEXT, instruction TEXT
+  )`)
+
+  db.run(`CREATE TABLE IF NOT EXISTS biz_group (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    sort_order INTEGER DEFAULT 0
+  )`)
+
+  db.run(`CREATE TABLE IF NOT EXISTS biz_group_member (
+    group_id TEXT, credit_code TEXT, seq INTEGER,
+    PRIMARY KEY (group_id, credit_code)
+  )`)
+
+  db.run(`CREATE TABLE IF NOT EXISTS level_event (
+    id TEXT PRIMARY KEY,
+    record_id TEXT,
+    type TEXT,
+    date TEXT,
+    note TEXT
+  )`)
+
+  db.run(`CREATE TABLE IF NOT EXISTS reminder (
+    id TEXT PRIMARY KEY,
+    record_id TEXT,
+    description TEXT,
+    date TEXT
+  )`)
+
+  db.run(`CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  )`)
+
   // Seed default townships if empty
   const townCount = db.exec("SELECT COUNT(*) FROM dict_township")
   if (townCount.length === 0 || townCount[0].values[0][0] === 0) {
@@ -154,10 +238,17 @@ export async function importDatabase(data: Uint8Array): Promise<void> {
 export const SCREENING_STORAGE_KEY = "enterprise-records-screening"
 export const SCREENING_DETAIL_KEY = "enterprise-records-screening-detail"
 
-/** 删除初筛表数据并重置（存空数组标记已初始化） */
+/** 删除所有初筛 / 级别 / 集团 / 时间轴 / 提醒业务数据（字典保留） */
 export function resetScreeningData(): void {
-  localStorage.setItem(SCREENING_STORAGE_KEY, "[]")
-  localStorage.removeItem(SCREENING_DETAIL_KEY)
+  runWrite(d => {
+    for (const t of [
+      'screening', 'screening_tax', 'screening_metric', 'report_source',
+      'level_extra', 'level_progress', 'biz_group', 'biz_group_member',
+      'level_event', 'reminder',
+    ]) {
+      d.run(`DELETE FROM ${t}`)
+    }
+  })
 }
 
 export function execSQL(sql: string, params?: unknown[]): unknown[] {
@@ -169,5 +260,33 @@ export function execSQL(sql: string, params?: unknown[]): unknown[] {
 export function runSQL(sql: string, params?: unknown[]): void {
   if (!db) throw new Error("Database not initialized")
   db.run(sql, params as never[])
+  saveDatabase()
+}
+
+/** 查询并返回行对象数组（列名 → 值） */
+export function queryRows(sql: string, params?: unknown[]): Record<string, unknown>[] {
+  if (!db) throw new Error("Database not initialized")
+  const stmt = db.prepare(sql)
+  try {
+    if (params && params.length) stmt.bind(params as never[])
+    const out: Record<string, unknown>[] = []
+    while (stmt.step()) out.push(stmt.getAsObject())
+    return out
+  } finally {
+    stmt.free()
+  }
+}
+
+/** 在一个事务中执行多条写操作，结束后仅持久化一次 */
+export function runWrite(fn: (db: Database) => void): void {
+  if (!db) throw new Error("Database not initialized")
+  db.run("BEGIN")
+  try {
+    fn(db)
+    db.run("COMMIT")
+  } catch (e) {
+    db.run("ROLLBACK")
+    throw e
+  }
   saveDatabase()
 }
