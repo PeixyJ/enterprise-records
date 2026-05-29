@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import {
   Building2Icon,
   BuildingIcon,
@@ -62,7 +62,6 @@ export default function DashboardPage() {
   const operating = data.filter(r => r.isOperating).length
   const townLevel = data.filter(r => r.inTownLevel).length
   const cityLevel = data.filter(r => r.inCityLevel).length
-  const otherLevel = data.filter(r => r.inOther).length
 
   // 按乡镇汇总
   const townshipStats = useMemo(() => {
@@ -136,22 +135,34 @@ export default function DashboardPage() {
                     <TableHead className='text-right'>初筛条数</TableHead>
                     <TableHead className='text-right'>市级</TableHead>
                     <TableHead className='text-right'>镇级</TableHead>
-                    <TableHead className='text-right'>其他</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {townshipStats.map(s => (
                     <TableRow key={s.township}>
-                      <TableCell className='font-medium'>{s.township}</TableCell>
-                      <TableCell className='text-right'>{s.total}</TableCell>
-                      <TableCell className='text-right'>
-                        {s.city > 0 ? <Badge variant='outline' className='rounded-sm'>{s.city}</Badge> : '—'}
+                      <TableCell className='font-medium'>
+                        <Link to={`/app/screening?township=${encodeURIComponent(s.township)}`} className='text-primary hover:underline'>
+                          {s.township}
+                        </Link>
                       </TableCell>
                       <TableCell className='text-right'>
-                        {s.town > 0 ? <Badge variant='outline' className='rounded-sm'>{s.town}</Badge> : '—'}
+                        <Link to={`/app/screening?township=${encodeURIComponent(s.township)}`} className='text-primary hover:underline'>
+                          {s.total}
+                        </Link>
                       </TableCell>
                       <TableCell className='text-right'>
-                        {s.other > 0 ? <Badge variant='outline' className='rounded-sm'>{s.other}</Badge> : '—'}
+                        {s.city > 0 ? (
+                          <Link to={`/app/city?township=${encodeURIComponent(s.township)}`}>
+                            <Badge variant='outline' className='rounded-sm cursor-pointer hover:bg-muted'>{s.city}</Badge>
+                          </Link>
+                        ) : '—'}
+                      </TableCell>
+                      <TableCell className='text-right'>
+                        {s.town > 0 ? (
+                          <Link to={`/app/town?township=${encodeURIComponent(s.township)}`}>
+                            <Badge variant='outline' className='rounded-sm cursor-pointer hover:bg-muted'>{s.town}</Badge>
+                          </Link>
+                        ) : '—'}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -161,7 +172,6 @@ export default function DashboardPage() {
                       <TableCell className='text-right'>{total}</TableCell>
                       <TableCell className='text-right'>{cityLevel}</TableCell>
                       <TableCell className='text-right'>{townLevel}</TableCell>
-                      <TableCell className='text-right'>{otherLevel}</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -185,23 +195,35 @@ export default function DashboardPage() {
                     <TableHead className='text-right'>初筛条数</TableHead>
                     <TableHead className='text-right'>市级</TableHead>
                     <TableHead className='text-right'>镇级</TableHead>
-                    <TableHead className='text-right'>其他</TableHead>
                     <TableHead className='text-right'>占比</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {industryStats.map(s => (
                     <TableRow key={s.industry}>
-                      <TableCell className='font-medium'>{s.industry}</TableCell>
-                      <TableCell className='text-right'>{s.total}</TableCell>
-                      <TableCell className='text-right'>
-                        {s.city > 0 ? <Badge variant='outline' className='rounded-sm'>{s.city}</Badge> : '—'}
+                      <TableCell className='font-medium'>
+                        <Link to={`/app/screening?industry=${encodeURIComponent(s.industry)}`} className='text-primary hover:underline'>
+                          {s.industry}
+                        </Link>
                       </TableCell>
                       <TableCell className='text-right'>
-                        {s.town > 0 ? <Badge variant='outline' className='rounded-sm'>{s.town}</Badge> : '—'}
+                        <Link to={`/app/screening?industry=${encodeURIComponent(s.industry)}`} className='text-primary hover:underline'>
+                          {s.total}
+                        </Link>
                       </TableCell>
                       <TableCell className='text-right'>
-                        {s.other > 0 ? <Badge variant='outline' className='rounded-sm'>{s.other}</Badge> : '—'}
+                        {s.city > 0 ? (
+                          <Link to={`/app/city?industry=${encodeURIComponent(s.industry)}`}>
+                            <Badge variant='outline' className='rounded-sm cursor-pointer hover:bg-muted'>{s.city}</Badge>
+                          </Link>
+                        ) : '—'}
+                      </TableCell>
+                      <TableCell className='text-right'>
+                        {s.town > 0 ? (
+                          <Link to={`/app/town?industry=${encodeURIComponent(s.industry)}`}>
+                            <Badge variant='outline' className='rounded-sm cursor-pointer hover:bg-muted'>{s.town}</Badge>
+                          </Link>
+                        ) : '—'}
                       </TableCell>
                       <TableCell className='text-right text-muted-foreground'>
                         {total ? Math.round(s.total / total * 100) : 0}%
@@ -214,7 +236,6 @@ export default function DashboardPage() {
                       <TableCell className='text-right'>{total}</TableCell>
                       <TableCell className='text-right'>{cityLevel}</TableCell>
                       <TableCell className='text-right'>{townLevel}</TableCell>
-                      <TableCell className='text-right'>{otherLevel}</TableCell>
                       <TableCell className='text-right'>100%</TableCell>
                     </TableRow>
                   )}

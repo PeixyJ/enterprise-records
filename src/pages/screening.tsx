@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 
 import {
   ChevronDownIcon,
@@ -290,8 +290,16 @@ export default function ScreeningPage() {
       return next
     })
   }
+  const [searchParams] = useSearchParams()
   const [globalFilter, setGlobalFilter] = useState('')
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>(() => {
+    const init: ColumnFiltersState = []
+    const township = searchParams.get('township')
+    if (township) init.push({ id: 'township', value: township })
+    const industry = searchParams.get('industry')
+    if (industry) init.push({ id: 'industry', value: industry })
+    return init
+  })
   const [levelFilter, setLevelFilter] = useState<'all' | 'town' | 'city' | 'other'>('all')
   const [dateStart, setDateStart] = useState('')
   const [dateEnd, setDateEnd] = useState('')
