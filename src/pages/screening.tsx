@@ -114,7 +114,7 @@ export type ScreeningRecord = {
   reportCount: number
 }
 
-function createColumns(onFeedback: (record: ScreeningRecord) => void, onDelete: (record: ScreeningRecord) => void): ColumnDef<ScreeningRecord>[] {
+function createColumns(onFeedback: (record: ScreeningRecord) => void, onDelete: (record: ScreeningRecord) => void, getDept: (id: string) => string): ColumnDef<ScreeningRecord>[] {
   return [
   {
     id: 'select',
@@ -167,6 +167,15 @@ function createColumns(onFeedback: (record: ScreeningRecord) => void, onDelete: 
     header: '街道乡镇',
     accessorKey: 'township',
     cell: ({ row }) => <span className='text-muted-foreground'>{row.getValue('township')}</span>,
+  },
+  {
+    id: 'reportDept',
+    header: '报送部门',
+    enableSorting: false,
+    cell: ({ row }) => {
+      const dept = getDept(row.original.id)
+      return <span className='text-muted-foreground'>{dept || '—'}</span>
+    },
   },
   {
     header: '规上企业',
@@ -408,7 +417,22 @@ export default function ScreeningPage() {
     setDeleteRecord(null)
   }
 
-  const columns = createColumns(handleOpenFeedback, handleDelete)
+  const deptMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    const saved = localStorage.getItem(SCREENING_DETAIL_KEY)
+    if (saved) {
+      try {
+        const all = JSON.parse(saved) as Record<string, { reportSource?: { department?: string } }>
+        for (const id of Object.keys(all)) {
+          const dept = all[id]?.reportSource?.department
+          if (dept) map[id] = dept
+        }
+      } catch { /* ignore */ }
+    }
+    return map
+  }, [data])
+
+  const columns = createColumns(handleOpenFeedback, handleDelete, (id: string) => deptMap[id] ?? '')
 
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,

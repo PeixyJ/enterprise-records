@@ -187,6 +187,26 @@ const defaultExtra: Omit<LevelRecord, 'id' | 'creditCode' | 'companyName' | 'ind
   otherFeedback: '—', coordination: '—', progress: [],
 }
 
+export type LevelExtra = Omit<LevelRecord, 'id' | 'creditCode' | 'companyName' | 'industry' | 'township' | 'status' | 'reportDate'>
+
+// 供企业详情页复用：按记录加载企业进展信息
+export function loadProgressInfo(id: string, creditCode: string): LevelExtra {
+  const keys: Array<'inCityLevel' | 'inTownLevel' | 'inOther'> = ['inCityLevel', 'inTownLevel', 'inOther']
+  for (const k of keys) {
+    const saved = localStorage.getItem(LEVEL_STORAGE_PREFIX + k)
+    if (saved) {
+      try {
+        const all = JSON.parse(saved) as Record<string, Partial<LevelExtra>>
+        const extra = creditCode ? all[creditCode] : undefined
+        if (extra) return { ...defaultExtra, ...extra }
+      } catch { /* ignore */ }
+    }
+  }
+  const demo = demoExtras[id]
+  if (demo) return demo
+  return defaultExtra
+}
+
 function deriveStatus(progress: ProgressEntry[]): LevelStatus {
   if (progress.length === 0) return '正常'
   // 检查最新一条进展

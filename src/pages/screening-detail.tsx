@@ -15,6 +15,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
@@ -24,6 +25,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { cn } from '@/lib/utils'
 import { SCREENING_STORAGE_KEY, SCREENING_DETAIL_KEY } from '@/db/database'
 import { type ScreeningRecord, demoData, getIndustryIcon } from './screening'
+import { loadProgressInfo, type LevelExtra } from './level-table'
 
 // ── 数据类型 ──────────────────────────────────────
 
@@ -200,6 +202,10 @@ export default function ScreeningDetailPage() {
   const [draftTax, setDraftTax] = useState(taxData)
   const [draftSimple, setDraftSimple] = useState<SimpleYearData[]>([])
   const [draftReports, setDraftReports] = useState(reportData)
+  const [reportDetailLog, setReportDetailLog] = useState<ReportLog | null>(null)
+
+  // 企业进展信息（来自市级/镇级表）
+  const progressInfo: LevelExtra | null = record ? loadProgressInfo(record.id, record.creditCode) : null
 
   if (!record || !basicData) {
     return (
@@ -301,6 +307,7 @@ export default function ScreeningDetailPage() {
           <TabsTrigger value='water'>水务</TabsTrigger>
           <TabsTrigger value='finance'>金融办</TabsTrigger>
           <TabsTrigger value='reports'>上报记录</TabsTrigger>
+          <TabsTrigger value='progress'>企业进展</TabsTrigger>
         </TabsList>
 
         {/* ── 基本信息 ── */}
@@ -464,7 +471,13 @@ export default function ScreeningDetailPage() {
                         <>
                           <TableCell><Badge variant='outline' className='rounded-sm'>{log.infoSource}</Badge></TableCell>
                           <TableCell>{log.department}</TableCell>
-                          <TableCell className='max-w-48'>{log.warningReason}</TableCell>
+                          <TableCell>
+                            <button type='button' className='text-left cursor-pointer hover:text-primary hover:underline' onClick={() => setReportDetailLog(log)}>
+                              {log.warningReason
+                                ? (log.warningReason.length > 10 ? log.warningReason.slice(0, 10) + '…' : log.warningReason)
+                                : '—'}
+                            </button>
+                          </TableCell>
                           <TableCell className='font-mono text-sm'>{log.issueDate}</TableCell>
                           <TableCell className='text-right'>{fmt(log.amount)}</TableCell>
                           <TableCell className='text-muted-foreground'>{log.other || '—'}</TableCell>
@@ -477,7 +490,82 @@ export default function ScreeningDetailPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ── 企业进展 ── */}
+        <TabsContent value='progress'>
+          <Card>
+            <CardHeader>
+              <CardTitle>企业进展</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {progressInfo ? (
+                <div className='flex flex-col gap-6'>
+                  <div className='grid grid-cols-1 sm:grid-cols-2 gap-4'>
+                    <FieldStatic label='经营情况' value={progressInfo.businessStatus || '—'} />
+                    <FieldStatic label='资产情况' value={progressInfo.assetStatus || '—'} />
+                    <FieldStatic label='负债情况' value={progressInfo.debtStatus || '—'} />
+                    <FieldStatic label='员工情况' value={progressInfo.staffStatus || '—'} />
+                    <FieldStatic label='其他需要反馈的情况' value={progressInfo.otherFeedback || '—'} />
+                    <FieldStatic label='需要协调的事项' value={progressInfo.coordination || '—'} />
+                  </div>
+                  <Separator />
+                  <div>
+                    <h4 className='text-sm font-semibold mb-4'>进展记录</h4>
+                    {progressInfo.progress.length > 0 ? (
+                      <div className='relative pl-6 border-l-2 border-muted flex flex-col gap-6'>
+                        {progressInfo.progress.map((entry, i) => (
+                          <div key={i} className='relative'>
+                            <div className='absolute -left-[25px] top-1 size-3 rounded-full bg-primary' />
+                            <p className='text-xs text-muted-foreground mb-1'>{entry.date}</p>
+                            <p className='text-sm mb-1'>{entry.content}</p>
+                            {entry.instruction && (
+                              <div className='mt-1 rounded-md bg-muted/50 px-3 py-2'>
+                                <span className='text-xs text-muted-foreground'>批示：</span>
+                                <span className='text-sm'>{entry.instruction}</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className='text-sm text-muted-foreground'>暂无进展记录</p>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <p className='text-sm text-muted-foreground'>暂无进展信息</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      {/* 上报信息详情弹窗 */}
+      <Dialog open={reportDetailLog !== null} onOpenChange={open => { if (!open) setReportDetailLog(null) }}>
+        <DialogContent className='sm:max-w-lg'>
+          <DialogHeader>
+            <DialogTitle>上报信息详情</DialogTitle>
+            <DialogDescription className='sr-only'>查看完整的上报记录信息</DialogDescription>
+          </DialogHeader>
+          {reportDetailLog && (
+            <div className='grid grid-cols-1 sm:grid-cols-2 gap-4 py-2'>
+              <FieldStatic label='信息来源' value={reportDetailLog.infoSource || '—'} />
+              <FieldStatic label='报送部门' value={reportDetailLog.department || '—'} />
+              <FieldStatic label='问题时间' value={reportDetailLog.issueDate || '—'} />
+              <FieldStatic label='金额（万元）' value={fmt(reportDetailLog.amount)} />
+              <div className='sm:col-span-2'>
+                <FieldStatic label='预警理由' value={<span className='whitespace-pre-wrap'>{reportDetailLog.warningReason || '—'}</span>} />
+              </div>
+              <div className='sm:col-span-2'>
+                <FieldStatic label='其他信息' value={<span className='whitespace-pre-wrap'>{reportDetailLog.other || '—'}</span>} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant='outline' onClick={() => setReportDetailLog(null)}>关闭</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
