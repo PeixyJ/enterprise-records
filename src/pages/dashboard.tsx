@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router'
 import {
   Building2Icon,
   BuildingIcon,
@@ -27,11 +28,15 @@ function loadData(): ScreeningRecord[] {
 
 // ── 统计卡片 ──────────────────────────────────────
 
-function StatCard({ title, value, icon: Icon, description, color }: {
-  title: string; value: string | number; icon: React.ElementType; description?: string; color: string
+function StatCard({ title, value, icon: Icon, description, color, to }: {
+  title: string; value: string | number; icon: React.ElementType; description?: string; color: string; to?: string
 }) {
+  const navigate = useNavigate()
   return (
-    <Card className='py-4'>
+    <Card
+      className={cn('py-4', to && 'cursor-pointer transition-colors hover:bg-muted/50')}
+      onClick={to ? () => navigate(to) : undefined}
+    >
       <CardContent className='flex items-center gap-3 px-4 py-0'>
         <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg', color)}>
           <Icon className='size-4' />
@@ -106,13 +111,12 @@ export default function DashboardPage() {
 
       <div className='p-6 space-y-6'>
         {/* 统计卡片 */}
-        <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4'>
-          <StatCard title='初筛信息条数' value={total} icon={FileTextIcon} color='bg-blue-100 text-blue-600' />
-          <StatCard title='规上企业' value={aboveScale} icon={FactoryIcon} description={`占比 ${total ? Math.round(aboveScale / total * 100) : 0}%`} color='bg-emerald-100 text-emerald-600' />
-          <StatCard title='正常运营' value={operating} icon={TrendingUpIcon} description={`占比 ${total ? Math.round(operating / total * 100) : 0}%`} color='bg-green-100 text-green-600' />
-          <StatCard title='列入镇级' value={townLevel} icon={BuildingIcon} description={`在库 ${townLevel} 家`} color='bg-amber-100 text-amber-600' />
-          <StatCard title='列入市级' value={cityLevel} icon={LandmarkIcon} description={`在库 ${cityLevel} 家`} color='bg-purple-100 text-purple-600' />
-          <StatCard title='列入其他' value={otherLevel} icon={FileTextIcon} description={`在库 ${otherLevel} 家`} color='bg-gray-100 text-gray-600' />
+        <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4'>
+          <StatCard title='初筛信息条数' value={total} icon={FileTextIcon} color='bg-blue-100 text-blue-600' to='/app/screening' />
+          <StatCard title='规上企业' value={aboveScale} icon={FactoryIcon} description={`占比 ${total ? Math.round(aboveScale / total * 100) : 0}%`} color='bg-emerald-100 text-emerald-600' to='/app/screening' />
+          <StatCard title='正常运营' value={operating} icon={TrendingUpIcon} description={`占比 ${total ? Math.round(operating / total * 100) : 0}%`} color='bg-green-100 text-green-600' to='/app/screening' />
+          <StatCard title='列入镇级' value={townLevel} icon={BuildingIcon} description={`在库 ${townLevel} 家`} color='bg-amber-100 text-amber-600' to='/app/town' />
+          <StatCard title='列入市级' value={cityLevel} icon={LandmarkIcon} description={`在库 ${cityLevel} 家`} color='bg-purple-100 text-purple-600' to='/app/city' />
         </div>
 
         <div className='grid grid-cols-1 lg:grid-cols-2 gap-6 min-w-0'>
