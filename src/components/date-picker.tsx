@@ -1,16 +1,18 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronDownIcon } from 'lucide-react'
+import { Calendar as CalendarIcon } from 'lucide-react'
 
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
-export function DatePicker({ value, onChange, placeholder = '选择日期' }: {
+export function DatePicker({ value, onChange, placeholder = '选择日期', className }: {
   value?: string
   onChange: (value: string) => void
   placeholder?: string
+  className?: string
 }) {
   const [open, setOpen] = useState(false)
 
@@ -19,9 +21,13 @@ export function DatePicker({ value, onChange, placeholder = '选择日期' }: {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant='outline' className='w-36 justify-between font-normal text-sm'>
-          {selected ? selected.toLocaleDateString('zh-CN') : <span className='text-muted-foreground'>{placeholder}</span>}
-          <ChevronDownIcon className='size-4 opacity-50' />
+        <Button
+          variant='outline'
+          data-empty={!selected}
+          className={cn('w-36 justify-start text-left font-normal data-[empty=true]:text-muted-foreground', className)}
+        >
+          <CalendarIcon className='size-4' />
+          {selected ? selected.toLocaleDateString('zh-CN') : <span>{placeholder}</span>}
         </Button>
       </PopoverTrigger>
       <PopoverContent className='w-auto overflow-hidden p-0' align='start'>

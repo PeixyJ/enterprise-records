@@ -9,6 +9,7 @@ import {
   TrendingDownIcon,
   UsersIcon,
   FactoryIcon,
+  BellIcon,
 } from 'lucide-react'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,6 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { SCREENING_STORAGE_KEY } from '@/db/database'
 import { type ScreeningRecord, demoData } from './screening'
+import { loadAllReminders, isOverdue } from '@/lib/reminders'
 
 // ── 数据加载 ──────────────────────────────────────
 
@@ -97,8 +99,27 @@ export default function DashboardPage() {
       .sort((a, b) => b.total - a.total)
   }, [data])
 
-  // 按信息来源（报送部门）汇总 — 需要从 detail 数据获取
-  // 目前用行业分布替代
+  // 超期时间节点提醒
+  const overdueReminders = useMemo(() => {
+    const all = loadAllReminders()
+    const recById = new Map(data.map(r => [r.id, r]))
+    const rows: { recordId: string; companyName: string; industry: string; township: string; description: string; date: string }[] = []
+    for (const recordId of Object.keys(all)) {
+      const rec = recById.get(recordId)
+      for (const node of all[recordId]) {
+        if (!isOverdue(node.date)) continue
+        rows.push({
+          recordId,
+          companyName: rec?.companyName ?? '未知企业',
+          industry: rec?.industry ?? '—',
+          township: rec?.township ?? '—',
+          description: node.description,
+          date: node.date,
+        })
+      }
+    }
+    return rows.sort((a, b) => a.date.localeCompare(b.date))
+  }, [data])
 
   return (
     <div className='w-full'>
@@ -244,6 +265,45 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* 超期时间节点提醒 */}
+        {overdueReminders.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className='flex items-center gap-2'>
+                <BellIcon className='size-5 text-red-500' />
+                超期时间节点提醒
+                <Badge className='rounded-full bg-red-100 text-red-700'>{overdueReminders.length}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>企业名称</TableHead>
+                    <TableHead>行业</TableHead>
+                    <TableHead>乡镇</TableHead>
+                    <TableHead>提醒描述</TableHead>
+                    <TableHead>时间节点</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {overdueReminders.map((r, i) => (
+                    <TableRow key={r.recordId + '-' + i} className='bg-red-50/50'>
+                      <TableCell className='font-medium max-w-40 truncate'>
+                        <Link to={`/app/screening/${r.recordId}`} className='text-primary hover:underline'>{r.companyName}</Link>
+                      </TableCell>
+                      <TableCell className='text-muted-foreground max-w-24 truncate'>{r.industry}</TableCell>
+                      <TableCell className='text-muted-foreground max-w-28 truncate'>{r.township}</TableCell>
+                      <TableCell className='max-w-48 truncate'>{r.description}</TableCell>
+                      <TableCell className='text-red-600'>{r.date}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
 
         {/* 异常运营企业列表 */}
         {data.filter(r => !r.isOperating).length > 0 && (

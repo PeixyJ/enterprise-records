@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, Link } from 'react-router'
+import { useParams, useNavigate, Link } from 'react-router'
 import {
   ArrowLeftIcon,
   CheckIcon,
@@ -9,6 +9,10 @@ import {
   BuildingIcon,
   LandmarkIcon,
   PencilIcon,
+  BellIcon,
+  PlusIcon,
+  Trash2Icon,
+  AlertTriangleIcon,
 } from 'lucide-react'
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -21,11 +25,15 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { SCREENING_STORAGE_KEY, SCREENING_DETAIL_KEY } from '@/db/database'
 import { type ScreeningRecord, demoData, getIndustryIcon } from './screening'
 import { loadProgressInfo, type LevelExtra } from './level-table'
+import { type TimeNode, loadReminders, saveReminders, newNodeId, isOverdue } from '@/lib/reminders'
+import { type LevelEvent, type LevelEventType, LEVEL_EVENT_LABEL, loadLevelEvents, saveLevelEvents, newEventId } from '@/lib/level-timeline'
+import { DatePicker } from '@/components/date-picker'
 
 // ── 数据类型 ──────────────────────────────────────
 
@@ -171,6 +179,11 @@ function EditButton({ editing, onEdit, onSave, onCancel }: {
 
 export default function ScreeningDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const goBack = () => {
+    if (window.history.length > 1) navigate(-1)
+    else navigate('/app/screening')
+  }
   const allData: ScreeningRecord[] = (() => {
     const saved = localStorage.getItem(SCREENING_STORAGE_KEY)
     if (saved) try { return JSON.parse(saved) } catch { /* */ }
@@ -193,6 +206,7 @@ export default function ScreeningDetailPage() {
     isOperating: record.isOperating,
     inTownLevel: record.inTownLevel,
     inCityLevel: record.inCityLevel,
+    reportDate: record.reportDate,
   } : null)
   const [taxData, setTaxData] = useState(() => toTaxData(detail))
   const [socialData, setSocialData] = useState(() => toSimpleData(detail?.social))
@@ -200,26 +214,79 @@ export default function ScreeningDetailPage() {
   const [waterData, setWaterData] = useState(() => toSimpleData(detail?.water))
   const [loanData, setLoanData] = useState(() => toSimpleData(detail?.loan))
   const [reportData, setReportData] = useState(() => toReportLogs(detail))
+  const [timelineEvents, setTimelineEvents] = useState<LevelEvent[]>(() => id ? loadLevelEvents(id) : [])
+  const [newEventType, setNewEventType] = useState<LevelEventType>('joinTown')
+  const [newEventDate, setNewEventDate] = useState('')
+  const [newEventNote, setNewEventNote] = useState('')
+  const [editingEventId, setEditingEventId] = useState<string | null>(null)
+  const [editEventDate, setEditEventDate] = useState('')
+  const [editEventNote, setEditEventNote] = useState('')
 
   // 编辑草稿
   const [draftBasic, setDraftBasic] = useState(basicData)
   const [draftTax, setDraftTax] = useState(taxData)
   const [draftSimple, setDraftSimple] = useState<SimpleYearData[]>([])
   const [draftReports, setDraftReports] = useState(reportData)
+
+  const persistTimeline = (events: LevelEvent[]) => {
+    const sorted = [...events].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+    setTimelineEvents(sorted)
+    if (id) saveLevelEvents(id, sorted)
+  }
+  const handleAddEvent = () => {
+    if (!newEventDate) return
+    persistTimeline([...timelineEvents, { id: newEventId(), type: newEventType, date: newEventDate, note: newEventNote.trim() || undefined }])
+    setNewEventDate('')
+    setNewEventNote('')
+  }
+  const handleDeleteEvent = (eventId: string) => {
+    persistTimeline(timelineEvents.filter(e => e.id !== eventId))
+    if (editingEventId === eventId) setEditingEventId(null)
+  }
+  const startEditEvent = (e: LevelEvent) => {
+    setEditingEventId(e.id)
+    setEditEventDate(e.date)
+    setEditEventNote(e.note ?? '')
+  }
+  const saveEditEvent = () => {
+    if (!editingEventId || !editEventDate) return
+    persistTimeline(timelineEvents.map(e => e.id === editingEventId ? { ...e, date: editEventDate, note: editEventNote.trim() || undefined } : e))
+    setEditingEventId(null)
+  }
   const [reportDetailLog, setReportDetailLog] = useState<ReportLog | null>(null)
 
   // 企业进展信息（来自市级/镇级表）
   const progressInfo: LevelExtra | null = record ? loadProgressInfo(record.id, record.creditCode) : null
 
+  // 时间节点提醒
+  const [reminderOpen, setReminderOpen] = useState(false)
+  const [reminders, setReminders] = useState<TimeNode[]>(() => id ? loadReminders(id) : [])
+  const [reminderDesc, setReminderDesc] = useState('')
+  const [reminderDate, setReminderDate] = useState('')
+
+  const persistReminders = (next: TimeNode[]) => {
+    setReminders(next)
+    if (id) saveReminders(id, next)
+  }
+  const handleAddReminder = () => {
+    if (!reminderDesc.trim() || !reminderDate) return
+    persistReminders([...reminders, { id: newNodeId(), description: reminderDesc.trim(), date: reminderDate }]
+      .sort((a, b) => a.date.localeCompare(b.date)))
+    setReminderDesc('')
+    setReminderDate('')
+  }
+  const handleDeleteReminder = (nodeId: string) => {
+    persistReminders(reminders.filter(n => n.id !== nodeId))
+  }
+  const overdueCount = reminders.filter(n => isOverdue(n.date)).length
+
   if (!record || !basicData) {
     return (
       <div className='flex flex-col items-center justify-center gap-4 py-20'>
         <p className='text-muted-foreground'>未找到该企业记录</p>
-        <Button variant='outline' asChild>
-          <Link to='/app/screening'>
-            <ArrowLeftIcon className='size-4' />
-            返回初筛表
-          </Link>
+        <Button variant='outline' onClick={goBack}>
+          <ArrowLeftIcon className='size-4' />
+          返回
         </Button>
       </div>
     )
@@ -257,11 +324,9 @@ export default function ScreeningDetailPage() {
 
   return (
     <div className='w-full'>
-      <Button variant='ghost' size='sm' className='mb-4' asChild>
-        <Link to='/app/screening'>
-          <ArrowLeftIcon className='size-4' />
-          返回初筛表
-        </Link>
+      <Button variant='ghost' size='sm' className='mb-4' onClick={goBack}>
+        <ArrowLeftIcon className='size-4' />
+        返回
       </Button>
 
       {/* 头部信息 */}
@@ -291,6 +356,15 @@ export default function ScreeningDetailPage() {
             <span>上报时间: {record.reportDate}</span>
           </div>
         </div>
+        <Button variant='outline' size='sm' onClick={() => setReminderOpen(true)} className={cn(overdueCount > 0 && 'border-red-300 text-red-600 hover:text-red-700')}>
+          <BellIcon className='size-4' />
+          时间节点提醒
+          {reminders.length > 0 && (
+            <Badge className={cn('ml-1 rounded-full px-1.5', overdueCount > 0 ? 'bg-red-100 text-red-700' : 'bg-muted text-muted-foreground')}>
+              {overdueCount > 0 ? `${overdueCount} 超期` : reminders.length}
+            </Badge>
+          )}
+        </Button>
       </div>
 
       {/* 统计卡片 */}
@@ -312,6 +386,7 @@ export default function ScreeningDetailPage() {
           <TabsTrigger value='finance'>金融办</TabsTrigger>
           <TabsTrigger value='reports'>上报记录</TabsTrigger>
           <TabsTrigger value='progress'>企业进展</TabsTrigger>
+          <TabsTrigger value='timeline'>镇级/市级时间轴</TabsTrigger>
         </TabsList>
 
         {/* ── 基本信息 ── */}
@@ -334,6 +409,7 @@ export default function ScreeningDetailPage() {
                   <FieldSwitch label='是否正常运营' checked={draftBasic.isOperating} onChange={v => setDraftBasic({ ...draftBasic, isOperating: v })} />
                   <FieldSwitch label='列入镇级' checked={draftBasic.inTownLevel} onChange={v => setDraftBasic({ ...draftBasic, inTownLevel: v })} />
                   <FieldSwitch label='列入市级' checked={draftBasic.inCityLevel} onChange={v => setDraftBasic({ ...draftBasic, inCityLevel: v })} />
+                  <FieldDate label='上报时间' value={draftBasic.reportDate} onChange={v => setDraftBasic({ ...draftBasic, reportDate: v })} />
                 </div>
               ) : (
                 <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-5 gap-x-8'>
@@ -345,7 +421,7 @@ export default function ScreeningDetailPage() {
                   <FieldStatic label='是否正常运营' value={<BoolValue value={basicData.isOperating} />} />
                   <FieldStatic label='列入镇级' value={<BoolValue value={basicData.inTownLevel} />} />
                   <FieldStatic label='列入市级' value={<BoolValue value={basicData.inCityLevel} />} />
-                  <FieldStatic label='上报时间' value={record.reportDate} />
+                  <FieldStatic label='上报时间' value={basicData.reportDate} />
                   <FieldStatic label='上报次数' value={`${record.reportCount} 次`} />
                 </div>
               )}
@@ -467,7 +543,7 @@ export default function ScreeningDetailPage() {
                           <TableCell><Input className='w-24' value={log.infoSource} onChange={e => { const d = [...draftReports]; d[i] = { ...d[i], infoSource: e.target.value }; setDraftReports(d) }} /></TableCell>
                           <TableCell><Input className='w-20' value={log.department} onChange={e => { const d = [...draftReports]; d[i] = { ...d[i], department: e.target.value }; setDraftReports(d) }} /></TableCell>
                           <TableCell><Input className='w-48' value={log.warningReason} onChange={e => { const d = [...draftReports]; d[i] = { ...d[i], warningReason: e.target.value }; setDraftReports(d) }} /></TableCell>
-                          <TableCell><Input type='date' className='w-36' value={log.issueDate} onChange={e => { const d = [...draftReports]; d[i] = { ...d[i], issueDate: e.target.value }; setDraftReports(d) }} /></TableCell>
+                          <TableCell><DatePicker value={log.issueDate} onChange={v => { const d = [...draftReports]; d[i] = { ...d[i], issueDate: v }; setDraftReports(d) }} /></TableCell>
                           <TableCell className='text-right'><NumInput value={log.amount} onChange={v => { const d = [...draftReports]; d[i] = { ...d[i], amount: v }; setDraftReports(d) }} /></TableCell>
                           <TableCell><Input className='w-32' value={log.other} onChange={e => { const d = [...draftReports]; d[i] = { ...d[i], other: e.target.value }; setDraftReports(d) }} /></TableCell>
                         </>
@@ -542,7 +618,135 @@ export default function ScreeningDetailPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ── 镇级/市级时间轴 ── */}
+        <TabsContent value='timeline'>
+          <Card>
+            <CardHeader>
+              <CardTitle>镇级/市级时间轴</CardTitle>
+            </CardHeader>
+            <CardContent className='space-y-6'>
+              {/* 时间轴 */}
+              {timelineEvents.length > 0 ? (
+                <div className='relative pl-6 border-l-2 border-muted flex flex-col gap-6'>
+                  {timelineEvents.map(e => {
+                    const isJoin = e.type === 'joinTown' || e.type === 'joinCity'
+                    const editing = editingEventId === e.id
+                    return (
+                      <div key={e.id} className='relative flex items-start justify-between gap-2'>
+                        <div className={cn('absolute -left-[25px] top-2 size-3 rounded-full', isJoin ? 'bg-green-500' : 'bg-gray-400')} />
+                        {/* 左侧：永远展示 */}
+                        <div className='flex-1 min-w-0'>
+                          <div className='flex items-center gap-2'>
+                            <Badge className={cn('rounded-sm px-1.5', isJoin
+                              ? 'bg-green-100 text-green-700 border-green-200'
+                              : 'bg-gray-100 text-gray-600 border-gray-200'
+                            )}>{LEVEL_EVENT_LABEL[e.type]}</Badge>
+                            <span className='text-sm text-muted-foreground'>{e.date}</span>
+                          </div>
+                          {e.note && <p className='mt-1 text-sm whitespace-pre-wrap'>{e.note}</p>}
+                          {/* 编辑区 */}
+                          {editing && (
+                            <div className='mt-2 flex flex-col gap-2 rounded-md border bg-muted/30 p-3'>
+                              <DatePicker value={editEventDate} onChange={setEditEventDate} className='w-40' placeholder='时间' />
+                              <Input placeholder='注释（可选）' value={editEventNote} onChange={ev => setEditEventNote(ev.target.value)} />
+                              <div className='flex justify-end gap-2'>
+                                <Button variant='outline' size='sm' onClick={() => setEditingEventId(null)}>取消</Button>
+                                <Button size='sm' onClick={saveEditEvent} disabled={!editEventDate}>保存</Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        {/* 右侧：编辑 + 删除 */}
+                        <div className='flex items-center gap-1'>
+                          <Button variant='ghost' size='icon' className='size-8' onClick={() => startEditEvent(e)}>
+                            <PencilIcon className='size-4' />
+                          </Button>
+                          <Button variant='ghost' size='icon' className='size-8 text-red-500 hover:text-red-700 hover:bg-red-50' onClick={() => handleDeleteEvent(e.id)}>
+                            <Trash2Icon className='size-4' />
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className='text-sm text-muted-foreground'>暂无时间节点。切换初筛表的「列入镇级/市级」会自动记录，也可在下方手动添加。</p>
+              )}
+
+              {/* 手动添加 */}
+              <div className='border-t pt-4 space-y-2'>
+                <Label>手动添加节点</Label>
+                <div className='flex flex-wrap gap-2'>
+                  <Select value={newEventType} onValueChange={v => setNewEventType(v as LevelEventType)}>
+                    <SelectTrigger className='w-36'><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='joinTown'>加入镇级</SelectItem>
+                      <SelectItem value='leaveTown'>离开镇级</SelectItem>
+                      <SelectItem value='joinCity'>加入市级</SelectItem>
+                      <SelectItem value='leaveCity'>离开市级</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <DatePicker value={newEventDate} onChange={setNewEventDate} className='w-40' placeholder='时间' />
+                  <Input placeholder='注释（可选）' className='flex-1 min-w-40' value={newEventNote} onChange={e => setNewEventNote(e.target.value)} />
+                  <Button onClick={handleAddEvent} disabled={!newEventDate}>
+                    <PlusIcon className='size-4' />
+                    添加
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      {/* 时间节点提醒弹窗 */}
+      <Dialog open={reminderOpen} onOpenChange={setReminderOpen}>
+        <DialogContent className='sm:max-w-lg'>
+          <DialogHeader>
+            <DialogTitle>时间节点提醒</DialogTitle>
+            <DialogDescription>为该企业添加多个时间节点，超过当前时间的节点将高亮提醒。</DialogDescription>
+          </DialogHeader>
+          <div className='py-2 space-y-4'>
+            {/* 已有节点列表 */}
+            <div className='max-h-64 overflow-y-auto rounded-md border divide-y'>
+              {reminders.length > 0 ? reminders.map(node => {
+                const overdue = isOverdue(node.date)
+                return (
+                  <div key={node.id} className={cn('flex items-center gap-3 px-3 py-2', overdue && 'bg-red-50')}>
+                    <div className='flex-1 min-w-0'>
+                      <p className={cn('text-sm font-medium truncate', overdue && 'text-red-700')}>{node.description}</p>
+                      <p className={cn('text-xs', overdue ? 'text-red-600' : 'text-muted-foreground')}>
+                        {node.date}{overdue && <span className='ml-2 inline-flex items-center gap-1'><AlertTriangleIcon className='size-3' />已超期</span>}
+                      </p>
+                    </div>
+                    <Button variant='ghost' size='icon' className='size-8 text-red-500 hover:text-red-700 hover:bg-red-50' onClick={() => handleDeleteReminder(node.id)}>
+                      <Trash2Icon className='size-4' />
+                    </Button>
+                  </div>
+                )
+              }) : (
+                <p className='px-3 py-6 text-sm text-muted-foreground text-center'>暂无时间节点</p>
+              )}
+            </div>
+            {/* 添加新节点 */}
+            <div className='space-y-2'>
+              <Label>添加时间节点</Label>
+              <div className='flex gap-2'>
+                <Input placeholder='描述' value={reminderDesc} onChange={e => setReminderDesc(e.target.value)} />
+                <DatePicker value={reminderDate} onChange={setReminderDate} className='w-40' placeholder='时间' />
+                <Button onClick={handleAddReminder} disabled={!reminderDesc.trim() || !reminderDate}>
+                  <PlusIcon className='size-4' />
+                  添加
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant='outline' onClick={() => setReminderOpen(false)}>关闭</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* 上报信息详情弹窗 */}
       <Dialog open={reportDetailLog !== null} onOpenChange={open => { if (!open) setReportDetailLog(null) }}>
@@ -585,11 +789,20 @@ function FieldStatic({ label, value }: { label: string; value: React.ReactNode }
   )
 }
 
-function FieldInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function FieldInput({ label, value, onChange, type }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
   return (
     <div className='flex flex-col gap-1.5'>
       <Label className='text-sm text-muted-foreground'>{label}</Label>
-      <Input value={value} onChange={e => onChange(e.target.value)} />
+      <Input type={type} value={value} onChange={e => onChange(e.target.value)} />
+    </div>
+  )
+}
+
+function FieldDate({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className='flex flex-col gap-1.5'>
+      <Label className='text-sm text-muted-foreground'>{label}</Label>
+      <DatePicker value={value} onChange={onChange} className='w-full' />
     </div>
   )
 }

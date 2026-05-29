@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useParams, Link } from 'react-router'
+import { useParams, useNavigate, Link } from 'react-router'
 import { ArrowLeftIcon, LayersIcon } from 'lucide-react'
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -44,6 +44,11 @@ interface MergedProgress {
 
 export default function GroupDetailPage() {
   const { id } = useParams()
+  const navigate = useNavigate()
+  const goBack = () => {
+    if (window.history.length > 1) navigate(-1)
+    else navigate('/app/city')
+  }
   const group = useMemo(() => loadGroups().find(g => g.id === id) ?? null, [id])
 
   const recordByCode = useMemo(() => {
@@ -85,8 +90,8 @@ export default function GroupDetailPage() {
   if (!group) {
     return (
       <div className='w-full'>
-        <Button variant='ghost' size='sm' className='mb-4' asChild>
-          <Link to='/app/city'><ArrowLeftIcon className='size-4' />返回</Link>
+        <Button variant='ghost' size='sm' className='mb-4' onClick={goBack}>
+          <ArrowLeftIcon className='size-4' />返回
         </Button>
         <p className='text-muted-foreground'>未找到该集团</p>
       </div>

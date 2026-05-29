@@ -12,6 +12,7 @@ import {
   UploadIcon,
   DownloadIcon,
   RefreshCwIcon,
+  Trash2Icon,
   SearchIcon,
   Building2Icon,
   MonitorIcon,
@@ -81,6 +82,7 @@ import { PageJump } from '@/components/page-jump'
 import { getIndustries, getTownships } from '@/db/dict'
 import { SCREENING_STORAGE_KEY, SCREENING_DETAIL_KEY } from '@/db/database'
 import { importScreeningExcel, exportScreeningAll, exportScreeningZip, type ImportedScreeningRecord } from '@/lib/excel'
+import { addLevelEvent, todayStr } from '@/lib/level-timeline'
 
 type ReportSourceItem = ImportedScreeningRecord['reportSource']
 interface StoredDetail {
@@ -338,6 +340,14 @@ export default function ScreeningPage() {
 
   const handleSaveFeedback = () => {
     if (feedbackRecord) {
+      // 列入镇级/市级状态变化时，记录操作时间到时间轴
+      const today = todayStr()
+      if (fbInTownLevel !== feedbackRecord.inTownLevel) {
+        addLevelEvent(feedbackRecord.id, fbInTownLevel ? 'joinTown' : 'leaveTown', today)
+      }
+      if (fbInCityLevel !== feedbackRecord.inCityLevel) {
+        addLevelEvent(feedbackRecord.id, fbInCityLevel ? 'joinCity' : 'leaveCity', today)
+      }
       setData(prev => prev.map(r => r.id === feedbackRecord.id ? {
         ...r,
         isOperating: fbIsOperating,
@@ -462,6 +472,7 @@ export default function ScreeningPage() {
   const [exportAllEndDate, setExportAllEndDate] = useState('')
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteRecord, setDeleteRecord] = useState<ScreeningRecord | null>(null)
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false)
 
   const handleDelete = (record: ScreeningRecord) => {
     setDeleteRecord(record)
@@ -552,6 +563,14 @@ export default function ScreeningPage() {
     paginationItemsToDisplay: 2,
   })
 
+  const selectedRows = table.getFilteredSelectedRowModel().rows
+  const confirmBatchDelete = () => {
+    const ids = new Set(selectedRows.map(r => r.original.id))
+    setData(prev => prev.filter(r => !ids.has(r.id)))
+    table.resetRowSelection()
+    setBatchDeleteOpen(false)
+  }
+
   return (
     <div className='w-full'>
       <div className='border-b'>
@@ -628,6 +647,17 @@ export default function ScreeningPage() {
         </div>
         {/* 第二行：操作按钮靠右 */}
         <div className='flex items-center justify-end gap-2 px-6 pb-3'>
+          {selectedRows.length > 0 && (
+            <Button
+              variant='outline'
+              size='sm'
+              className='mr-auto text-red-500 hover:text-red-700 hover:bg-red-50 border-red-200'
+              onClick={() => setBatchDeleteOpen(true)}
+            >
+              <Trash2Icon className='size-4' />
+              批量删除（{selectedRows.length}）
+            </Button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant='ghost' className='text-muted-foreground size-8 rounded-full'>
@@ -842,6 +872,22 @@ export default function ScreeningPage() {
         </DialogContent>
       </Dialog>
 
+      {/* 批量删除确认弹窗 */}
+      <Dialog open={batchDeleteOpen} onOpenChange={setBatchDeleteOpen}>
+        <DialogContent className='sm:max-w-md'>
+          <DialogHeader>
+            <DialogTitle>确认批量删除</DialogTitle>
+            <DialogDescription>
+              确定要删除选中的 {selectedRows.length} 家企业记录吗？此操作不可撤销。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant='outline' onClick={() => setBatchDeleteOpen(false)}>取消</Button>
+            <Button variant='destructive' onClick={confirmBatchDelete}>删除</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* 导出全部 Dialog */}
       <Dialog open={exportAllOpen} onOpenChange={setExportAllOpen}>
         <DialogContent className='sm:max-w-md'>
@@ -851,12 +897,12 @@ export default function ScreeningPage() {
           </DialogHeader>
           <div className='py-4 space-y-4'>
             <div>
-              <Label htmlFor='export-all-start'>开始日期</Label>
-              <Input id='export-all-start' type='date' className='mt-2' value={exportAllStartDate} onChange={e => setExportAllStartDate(e.target.value)} />
+              <Label>开始日期</Label>
+              <DatePicker value={exportAllStartDate} onChange={setExportAllStartDate} className='mt-2 w-full' placeholder='开始日期' />
             </div>
             <div>
-              <Label htmlFor='export-all-end'>截止日期</Label>
-              <Input id='export-all-end' type='date' className='mt-2' value={exportAllEndDate} onChange={e => setExportAllEndDate(e.target.value)} />
+              <Label>截止日期</Label>
+              <DatePicker value={exportAllEndDate} onChange={setExportAllEndDate} className='mt-2 w-full' placeholder='截止日期' />
             </div>
             <p className='text-sm text-muted-foreground'>
               {(() => {
@@ -896,14 +942,8 @@ export default function ScreeningPage() {
           </DialogHeader>
           <div className='py-4 space-y-4'>
             <div>
-              <Label htmlFor='export-date'>上报时间晚于</Label>
-              <Input
-                id='export-date'
-                type='date'
-                className='mt-2'
-                value={exportDate}
-                onChange={e => setExportDate(e.target.value)}
-              />
+              <Label>上报时间晚于</Label>
+              <DatePicker value={exportDate} onChange={setExportDate} className='mt-2 w-full' placeholder='选择日期' />
             </div>
             <p className='text-sm text-muted-foreground'>
               将导出 {industries.length} 个行业 × {townships.length} 个乡镇的组合，

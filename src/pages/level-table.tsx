@@ -865,15 +865,8 @@ export default function LevelTable({ title, filterKey }: {
           </DialogHeader>
           <div className='py-4 space-y-4'>
             <div>
-              <Label htmlFor='level-export-date'>筛选条件（可选）</Label>
-              <Input
-                id='level-export-date'
-                type='date'
-                className='mt-2'
-                value={exportDate}
-                onChange={e => setExportDate(e.target.value)}
-                placeholder='不选则导出全部'
-              />
+              <Label>筛选条件（可选）</Label>
+              <DatePicker value={exportDate} onChange={setExportDate} className='mt-2 w-full' placeholder='不选则导出全部' />
               <p className='text-xs text-muted-foreground mt-1'>不选日期则导出全部数据</p>
             </div>
             <p className='text-sm text-muted-foreground'>
@@ -910,12 +903,12 @@ export default function LevelTable({ title, filterKey }: {
           </DialogHeader>
           <div className='py-4 space-y-4'>
             <div>
-              <Label htmlFor='q-report-date'>上报时间晚于</Label>
-              <Input id='q-report-date' type='date' className='mt-2' value={qReportDate} onChange={e => setQReportDate(e.target.value)} />
+              <Label>上报时间晚于</Label>
+              <DatePicker value={qReportDate} onChange={setQReportDate} className='mt-2 w-full' placeholder='选择日期' />
             </div>
             <div>
-              <Label htmlFor='q-deadline'>截止日期</Label>
-              <Input id='q-deadline' type='date' className='mt-2' value={qDeadline} onChange={e => setQDeadline(e.target.value)} />
+              <Label>截止日期</Label>
+              <DatePicker value={qDeadline} onChange={setQDeadline} className='mt-2 w-full' placeholder='选择日期' />
             </div>
           </div>
           <DialogFooter>
