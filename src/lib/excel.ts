@@ -17,6 +17,13 @@ export function exportToExcel(
   XLSX.writeFile(wb, filename)
 }
 
+/** 仅读取工作簿包含的工作表名称（不解析数据，用于导入前的格式校验） */
+export async function readSheetNames(file: File): Promise<string[]> {
+  const buf = await file.arrayBuffer()
+  const wb = XLSX_PLAIN.read(buf, { type: "array", bookSheets: true })
+  return wb.SheetNames
+}
+
 /** 从 File 对象读取 Excel，返回对象数组（默认第一个 sheet） */
 export async function importFromExcel<T = Record<string, unknown>>(
   file: File,
@@ -78,6 +85,58 @@ export interface ImportedScreeningRecord {
   }
 }
 
+/** 携带工作表/单元格定位信息的导入错误，message 为中文且面向用户 */
+export class ImportError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ImportError'
+  }
+}
+
+/** 列序号（0 起）转 Excel 列字母：0→A, 1→B, 26→AA */
+function colLetter(index: number): string {
+  let s = ''
+  let n = index
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s
+    n = Math.floor(n / 26) - 1
+  } while (n >= 0)
+  return s
+}
+
+/** 单元格坐标，如 (1, 5) → "B6"（列 0 起、Excel 行号 1 起） */
+function cellRef(colIndex: number, excelRow: number): string {
+  return `${colLetter(colIndex)}${excelRow}`
+}
+
+/** 单元格是否为空（null / 空白字符串） */
+function isBlank(v: unknown): boolean {
+  return v == null || String(v).trim() === ''
+}
+
+/**
+ * 将工作表转为二维数组，并把读取范围限制在安全上限内。
+ * 表中常残留被撑大的空白单元格格式，使 !ref 范围达到上百万行/上万列，
+ * 直接 sheet_to_json 会触发「Maximum call stack size exceeded」。
+ * 这里只读取安全范围内的数据，多余的空白行列在后续按「序号列为空」过滤掉。
+ */
+function sheetToRows(ws: XLSX_PLAIN.WorkSheet, opts: XLSX_PLAIN.Sheet2JSONOpts): unknown[][] {
+  const ref = ws['!ref']
+  if (ref) {
+    try {
+      const range = XLSX_PLAIN.utils.decode_range(ref)
+      const MAX_ROWS = 100000
+      const MAX_COLS = 200
+      if (range.e.r - range.s.r + 1 > MAX_ROWS) range.e.r = range.s.r + MAX_ROWS - 1
+      if (range.e.c - range.s.c + 1 > MAX_COLS) range.e.c = range.s.c + MAX_COLS - 1
+      return XLSX_PLAIN.utils.sheet_to_json(ws, { header: 1, ...opts, range })
+    } catch {
+      // decode_range 解析失败时退回默认解析
+    }
+  }
+  return XLSX_PLAIN.utils.sheet_to_json(ws, { header: 1, ...opts })
+}
+
 function parseBool(v: unknown): boolean {
   if (typeof v === 'string') return v.trim() === '是'
   if (typeof v === 'boolean') return v
@@ -106,21 +165,40 @@ function parseDate(v: unknown): string {
  * 表头在第5行，数据从第6行开始
  * 列结构见导入表格模板
  */
-export async function importScreeningExcel(file: File): Promise<ImportedScreeningRecord[]> {
+export async function importScreeningExcel(
+  file: File,
+  matchSheet?: (name: string) => boolean,
+): Promise<ImportedScreeningRecord[]> {
   const buf = await file.arrayBuffer()
   const wb = XLSX_PLAIN.read(buf, { type: "array" })
 
-  // 找到"初筛" sheet，找不到则用第一个
-  const sheetName = wb.SheetNames.find(n => n.includes('初筛')) ?? wb.SheetNames[0]
+  // 指定匹配器时，找不到对应 sheet 则跳过（用于多 sheet 合并导入）；
+  // 未指定时沿用默认：找"初筛" sheet，找不到则用第一个
+  let sheetName: string | undefined
+  if (matchSheet) {
+    sheetName = wb.SheetNames.find(matchSheet)
+    if (!sheetName) return []
+  } else {
+    sheetName = wb.SheetNames.find(n => n.includes('初筛')) ?? wb.SheetNames[0]
+  }
   const ws = wb.Sheets[sheetName]
-  const rows: unknown[][] = XLSX_PLAIN.utils.sheet_to_json(ws, { header: 1, defval: null })
+  const rows = sheetToRows(ws, { defval: null })
 
   // 数据从第6行开始（index 5），前5行是表头
   const dataRows = rows.slice(5)
   const records: ImportedScreeningRecord[] = []
 
-  for (const row of dataRows) {
-    if (!row || !row[1] || !row[2]) continue // 跳过社会信用代码或企业名称为空的行
+  dataRows.forEach((row, ri) => {
+    const excelRow = ri + 6 // dataRows[0] 对应 Excel 第 6 行
+    if (!row || isBlank(row[0])) return // 序号列(A列)为空，视为非有效数据，跳过
+
+    // 序号列有值才是用户填写的数据行，校验必填项：社会信用代码(B列)、企业名称(C列)
+    if (isBlank(row[1])) {
+      throw new ImportError(`「${sheetName}」工作表第 ${excelRow} 行的 ${cellRef(1, excelRow)} 单元格（社会信用代码）不能为空`)
+    }
+    if (isBlank(row[2])) {
+      throw new ImportError(`「${sheetName}」工作表第 ${excelRow} 行的 ${cellRef(2, excelRow)} 单元格（企业名称）不能为空`)
+    }
 
     const r = (i: number) => row[i] ?? null
 
@@ -166,7 +244,7 @@ export async function importScreeningExcel(file: File): Promise<ImportedScreenin
         extra: r(36) != null ? String(r(36)) : undefined,
       },
     })
-  }
+  })
 
   return records
 }
@@ -205,12 +283,23 @@ function excelDateToString(v: unknown): string {
  * 列: 0序号 1信用代码 2企业名称 3行业 4属地 5经营情况 6-7资产情况 8负债情况 9员工情况 10其他反馈 11协调事项
  * 12+: 每2列一组(进展+批示)，对应 Row 2 中的日期
  */
-export async function importLevelExcel(file: File): Promise<ImportedLevelRecord[]> {
+export async function importLevelExcel(
+  file: File,
+  matchSheet?: (name: string) => boolean,
+): Promise<ImportedLevelRecord[]> {
   const buf = await file.arrayBuffer()
   const wb = XLSX_PLAIN.read(buf, { type: "array", cellDates: true })
-  const sheetName = wb.SheetNames.find(n => n.includes('市级') || n.includes('镇级')) ?? wb.SheetNames[0]
+  // 指定匹配器时，找不到对应 sheet 则跳过（用于多 sheet 合并导入）；
+  // 未指定时沿用默认：找"市级"或"镇级" sheet，找不到则用第一个
+  let sheetName: string | undefined
+  if (matchSheet) {
+    sheetName = wb.SheetNames.find(matchSheet)
+    if (!sheetName) return []
+  } else {
+    sheetName = wb.SheetNames.find(n => n.includes('市级') || n.includes('镇级')) ?? wb.SheetNames[0]
+  }
   const ws = wb.Sheets[sheetName]
-  const rows: unknown[][] = XLSX_PLAIN.utils.sheet_to_json(ws, { header: 1, defval: null, raw: false })
+  const rows = sheetToRows(ws, { defval: null, raw: false })
 
   if (rows.length < 4) return []
 
@@ -224,8 +313,16 @@ export async function importLevelExcel(file: File): Promise<ImportedLevelRecord[
   const dataRows = rows.slice(3) // Row 4+ (index 3+)
   const records: ImportedLevelRecord[] = []
 
-  for (const row of dataRows) {
-    if (!row || (!row[1] && !row[2])) continue // 跳过空行
+  dataRows.forEach((row, ri) => {
+    const excelRow = ri + 4 // dataRows[0] 对应 Excel 第 4 行
+    if (!row || isBlank(row[0])) return // 序号列(A列)为空，视为非有效数据，跳过
+
+    // 序号列有值才是数据行，社会信用代码(B列)、企业名称(C列)至少要有一个，否则无法匹配企业
+    if (isBlank(row[1]) && isBlank(row[2])) {
+      throw new ImportError(
+        `「${sheetName}」工作表第 ${excelRow} 行缺少社会信用代码与企业名称（${cellRef(1, excelRow)}、${cellRef(2, excelRow)} 至少填写一个），无法匹配企业`,
+      )
+    }
     const r = (i: number) => row[i] ?? null
 
     // 解析进展
@@ -252,7 +349,7 @@ export async function importLevelExcel(file: File): Promise<ImportedLevelRecord[
       coordination: String(r(11) ?? ''),
       progress,
     })
-  }
+  })
 
   return records
 }

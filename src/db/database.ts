@@ -205,6 +205,20 @@ function initTables(): void {
   saveDatabase()
 }
 
+/**
+ * 将字节数组转 base64。必须分块处理：
+ * 直接 String.fromCharCode(...data) 会把每个字节作为函数实参展开，
+ * 数据库稍大（约 10 万字节以上）即超出调用栈上限，抛「Maximum call stack size exceeded」。
+ */
+function uint8ToBase64(data: Uint8Array): string {
+  let binary = ''
+  const CHUNK = 0x8000 // 每块 32768 字节，远低于实参个数上限
+  for (let i = 0; i < data.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, data.subarray(i, i + CHUNK) as unknown as number[])
+  }
+  return btoa(binary)
+}
+
 export function saveDatabase(): void {
   if (!db) return
   const data = db.export()
@@ -214,8 +228,7 @@ export function saveDatabase(): void {
       console.error('Failed to save database to disk:', err)
     })
   } else {
-    const base64 = btoa(String.fromCharCode(...data))
-    localStorage.setItem(DB_STORAGE_KEY, base64)
+    localStorage.setItem(DB_STORAGE_KEY, uint8ToBase64(data))
   }
 }
 

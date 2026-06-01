@@ -74,6 +74,7 @@ import { type ScreeningRecord, getIndustryIcon } from './screening'
 
 export { loadGroups } // 兼容旧引用（如集团详情页）
 import { importLevelExcel, exportLevelAll, exportLevelZip, exportLevelQuestionnaire } from '@/lib/excel'
+import { formatImportError } from '@/lib/import-store'
 import { DatePicker } from '@/components/date-picker'
 
 // ── 扩展记录类型 ──────────────────────────────────
@@ -458,7 +459,7 @@ export default function LevelTable({ title, filterKey }: {
       setTimeout(() => setImportCount(null), 3000)
     } catch (err) {
       console.error('导入失败:', err)
-      alert('导入失败，请检查文件格式是否正确')
+      alert('导入失败：' + formatImportError(err))
     }
     e.target.value = ''
   }

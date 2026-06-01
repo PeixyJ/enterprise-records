@@ -81,6 +81,8 @@ import { usePagination } from '@/hooks/use-pagination'
 import { PageJump } from '@/components/page-jump'
 import { getIndustries, getTownships } from '@/db/dict'
 import { loadScreening, saveScreening, loadAllDetail, saveAllDetail, type StoredDetail } from '@/db/screening-store'
+import { deleteReminders } from '@/lib/reminders'
+import { formatImportError } from '@/lib/import-store'
 import { importScreeningExcel, exportScreeningAll, exportScreeningZip, type ImportedScreeningRecord } from '@/lib/excel'
 import { addLevelEvent, todayStr } from '@/lib/level-timeline'
 
@@ -431,7 +433,7 @@ export default function ScreeningPage() {
       setTimeout(() => setImportCount(null), 3000)
     } catch (err) {
       console.error('导入失败:', err)
-      alert('导入失败，请检查文件格式是否正确')
+      alert('导入失败：' + formatImportError(err))
     }
     e.target.value = ''
   }
@@ -452,6 +454,7 @@ export default function ScreeningPage() {
 
   const confirmDelete = () => {
     if (deleteRecord) {
+      deleteReminders(deleteRecord.id) // 同步删除该企业的时间节点提醒
       setData(prev => prev.filter(r => r.id !== deleteRecord.id))
     }
     setDeleteOpen(false)
@@ -531,6 +534,7 @@ export default function ScreeningPage() {
   const selectedRows = table.getFilteredSelectedRowModel().rows
   const confirmBatchDelete = () => {
     const ids = new Set(selectedRows.map(r => r.original.id))
+    deleteReminders([...ids]) // 同步删除这些企业的时间节点提醒
     setData(prev => prev.filter(r => !ids.has(r.id)))
     table.resetRowSelection()
     setBatchDeleteOpen(false)

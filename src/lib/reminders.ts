@@ -44,6 +44,17 @@ export function saveReminders(recordId: string, nodes: TimeNode[]) {
   })
 }
 
+// 删除某企业的全部时间节点提醒（用于删除企业时同步清理）
+export function deleteReminders(recordIds: string | string[]) {
+  const ids = Array.isArray(recordIds) ? recordIds : [recordIds]
+  if (ids.length === 0) return
+  runWrite(d => {
+    for (const id of ids) {
+      d.run('DELETE FROM reminder WHERE record_id = ?', [id] as never[])
+    }
+  })
+}
+
 // 当前时间是否已超过该时间节点
 export function isOverdue(date: string): boolean {
   if (!date) return false

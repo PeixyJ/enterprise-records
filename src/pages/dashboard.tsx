@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import {
   Building2Icon,
@@ -10,15 +10,31 @@ import {
   UsersIcon,
   FactoryIcon,
   BellIcon,
+  UploadIcon,
+  DownloadIcon,
+  FileSpreadsheetIcon,
+  Loader2Icon,
+  CheckCircle2Icon,
+  AlertCircleIcon,
 } from 'lucide-react'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { loadScreening } from '@/db/screening-store'
 import { type ScreeningRecord } from './screening'
 import { loadAllReminders, isOverdue } from '@/lib/reminders'
+import { importWorkbookFile, describeImportProblems, formatImportError } from '@/lib/import-store'
 
 // ── 数据加载 ──────────────────────────────────────
 
@@ -54,7 +70,91 @@ function StatCard({ title, value, icon: Icon, description, color, to }: {
 // ── 主页面 ──────────────────────────────────────────
 
 export default function DashboardPage() {
-  const data = useMemo(loadData, [])
+  const [reloadKey, setReloadKey] = useState(0)
+  const data = useMemo(loadData, [reloadKey])
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
+  const [importResult, setImportResult] = useState<{ summary: string | null; problems: string[] } | null>(null)
+
+  const openImport = () => {
+    setImportResult(null)
+    setImportOpen(true)
+  }
+
+  // 下载导入模板（public/import-template.xlsx，下载时显示中文名）
+  const handleDownloadTemplate = async () => {
+    const url = window.location.protocol === 'file:' ? './import-template.xlsx' : '/import-template.xlsx'
+    try {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = '表格模板.xlsx'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(objectUrl)
+    } catch (err) {
+      console.error('模板下载失败:', err)
+      alert('模板下载失败，请重试')
+    }
+  }
+
+  // 核心导入逻辑，供点击选择与拖拽共用
+  const processFiles = async (fileList: FileList | File[]) => {
+    const files = Array.from(fileList).filter(f => /\.(xlsx|xls)$/i.test(f.name))
+    if (files.length === 0) {
+      setImportResult({ summary: null, problems: ['请选择 .xlsx 或 .xls 格式的 Excel 文件'] })
+      return
+    }
+    setImporting(true)
+    setImportResult(null)
+    try {
+      const total = { screening: 0, city: 0, town: 0 }
+      const problems: string[] = []
+      for (const file of files) {
+        try {
+          const s = await importWorkbookFile(file)
+          total.screening += s.screening.imported
+          total.city += s.city.imported
+          total.town += s.town.imported
+          problems.push(...describeImportProblems(s))
+        } catch (err) {
+          // 单个文件解析出错（如某单元格为空），定位到文件后继续处理其余文件
+          console.error(`导入「${file.name}」失败:`, err)
+          problems.push(`「${file.name}」导入失败：${formatImportError(err)}`)
+        }
+      }
+      setReloadKey(k => k + 1)
+      const importedAny = total.screening || total.city || total.town
+      setImportResult({
+        summary: importedAny ? `导入成功：初筛 ${total.screening} 条，市级 ${total.city} 条，镇级 ${total.town} 条` : null,
+        problems,
+      })
+    } catch (err) {
+      console.error('导入失败:', err)
+      setImportResult({ summary: null, problems: ['导入失败：' + formatImportError(err)] })
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) processFiles(e.target.files)
+    e.target.value = ''
+  }
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setDragOver(false)
+    if (importing) return
+    if (e.dataTransfer.files) processFiles(e.dataTransfer.files)
+  }
 
   // 基础统计
   const total = data.length
@@ -104,13 +204,14 @@ export default function DashboardPage() {
     const rows: { recordId: string; companyName: string; industry: string; township: string; description: string; date: string }[] = []
     for (const recordId of Object.keys(all)) {
       const rec = recById.get(recordId)
+      if (!rec) continue // 对应企业已不存在（被删除）则不显示
       for (const node of all[recordId]) {
         if (!isOverdue(node.date)) continue
         rows.push({
           recordId,
-          companyName: rec?.companyName ?? '未知企业',
-          industry: rec?.industry ?? '—',
-          township: rec?.township ?? '—',
+          companyName: rec.companyName,
+          industry: rec.industry,
+          township: rec.township,
           description: node.description,
           date: node.date,
         })
@@ -122,8 +223,18 @@ export default function DashboardPage() {
   return (
     <div className='w-full'>
       <div className='border-b'>
-        <div className='flex min-h-17 items-center px-6 py-3'>
+        <div className='flex min-h-17 items-center gap-3 px-6 py-3'>
           <span className='text-lg font-medium'>仪表盘</span>
+          <div className='ml-auto flex items-center gap-3'>
+            <Button size='sm' variant='outline' onClick={handleDownloadTemplate}>
+              <DownloadIcon className='size-4' />
+              下载模板
+            </Button>
+            <Button size='sm' onClick={openImport}>
+              <UploadIcon className='size-4' />
+              一键导入
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -343,6 +454,85 @@ export default function DashboardPage() {
           </Card>
         )}
       </div>
+
+      {/* 一键导入弹窗 */}
+      <Dialog open={importOpen} onOpenChange={o => { if (!importing) setImportOpen(o) }}>
+        <DialogContent className='sm:max-w-lg'>
+          <DialogHeader>
+            <DialogTitle>一键导入</DialogTitle>
+            <DialogDescription>
+              导入含「初筛」「市级」「镇级」工作表的 Excel，自动归集到对应模块。可一次选择多个文件。
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* 拖拽 / 点击上传区 */}
+          <div
+            role='button'
+            tabIndex={0}
+            onClick={() => !importing && fileInputRef.current?.click()}
+            onDragOver={e => { e.preventDefault(); if (!importing) setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            className={cn(
+              'flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors',
+              importing ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:bg-muted/50',
+              dragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25',
+            )}
+          >
+            {importing ? (
+              <>
+                <Loader2Icon className='size-8 animate-spin text-primary' />
+                <p className='text-sm text-muted-foreground'>正在导入，请稍候…</p>
+              </>
+            ) : (
+              <>
+                <FileSpreadsheetIcon className='size-8 text-muted-foreground' />
+                <div className='space-y-1'>
+                  <p className='text-sm font-medium'>点击选择，或将 Excel 文件拖拽到此处</p>
+                  <p className='text-xs text-muted-foreground'>支持 .xlsx / .xls，可多选</p>
+                </div>
+              </>
+            )}
+          </div>
+          <input
+            ref={fileInputRef}
+            type='file'
+            multiple
+            accept='.xlsx,.xls'
+            onChange={handleFileChange}
+            className='hidden'
+          />
+
+          {/* 导入结果 */}
+          {importResult && (
+            <div className='space-y-2'>
+              {importResult.summary && (
+                <div className='flex items-start gap-2 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700'>
+                  <CheckCircle2Icon className='mt-0.5 size-4 shrink-0' />
+                  <span>{importResult.summary}</span>
+                </div>
+              )}
+              {importResult.problems.length > 0 && (
+                <div className='space-y-1 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700'>
+                  <div className='flex items-center gap-2 font-medium'>
+                    <AlertCircleIcon className='size-4 shrink-0' />
+                    {importResult.summary ? '部分数据已导入，但存在以下问题：' : '导入未生效，原因如下：'}
+                  </div>
+                  <ul className='ml-6 list-disc space-y-0.5'>
+                    {importResult.problems.map((p, i) => <li key={i}>{p}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant='outline' disabled={importing} onClick={() => setImportOpen(false)}>
+              {importResult?.summary ? '完成' : '关闭'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
