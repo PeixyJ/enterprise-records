@@ -12,6 +12,7 @@ import TownPage from "./pages/town"
 import GroupDetailPage from "./pages/group-detail"
 import SettingsPage from "./pages/settings"
 import AdvancedSettingsPage from "./pages/advanced-settings"
+import HelpPage from "./pages/help"
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const authenticated = sessionStorage.getItem("authenticated") === "true"
@@ -39,6 +40,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="group/:id" element={<GroupDetailPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="advanced-settings" element={<AdvancedSettingsPage />} />
+          <Route path="help" element={<HelpPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>

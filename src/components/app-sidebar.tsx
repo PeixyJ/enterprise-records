@@ -59,7 +59,7 @@ const data = {
   navSecondary: [
     {
       title: "帮助支持",
-      url: "#",
+      url: "/app/help",
       icon: LifeBuoy,
     },
   ],

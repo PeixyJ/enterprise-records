@@ -7,6 +7,7 @@ const titleMap: Record<string, { title: string; parent?: string }> = {
   "/app/town": { title: "镇级表", parent: "档案管理" },
   "/app/advanced-settings": { title: "高级设置", parent: "系统设置" },
   "/app/settings": { title: "基本设置", parent: "系统设置" },
+  "/app/help": { title: "帮助支持" },
 }
 
 export function usePageTitle() {
