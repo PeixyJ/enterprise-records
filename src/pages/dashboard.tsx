@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { loadScreening } from '@/db/screening-store'
+import { loadGroups } from '@/db/group-store'
 import { type ScreeningRecord } from './screening'
 import { loadAllReminders, isOverdue } from '@/lib/reminders'
 import { importWorkbookFile, describeImportProblems, formatImportError } from '@/lib/import-store'
@@ -39,6 +40,21 @@ import { importWorkbookFile, describeImportProblems, formatImportError } from '@
 
 function loadData(): ScreeningRecord[] {
   return loadScreening()
+}
+
+// 按集团折叠计数：同一集团的成员只算 1 个，未入任何集团的企业各算 1 个
+function countCollapsed(records: ScreeningRecord[], groupOfCode: Map<string, string>): number {
+  const seenGroups = new Set<string>()
+  let count = 0
+  for (const r of records) {
+    const gid = r.creditCode ? groupOfCode.get(r.creditCode) : undefined
+    if (gid) {
+      if (seenGroups.has(gid)) continue
+      seenGroups.add(gid)
+    }
+    count++
+  }
+  return count
 }
 
 // ── 统计卡片 ──────────────────────────────────────
@@ -155,46 +171,53 @@ export default function DashboardPage() {
     if (e.dataTransfer.files) processFiles(e.dataTransfer.files)
   }
 
-  // 基础统计
+  // 集团映射：社会信用代码 → 集团 id（用于将同集团企业折叠为一个计数）
+  const groupOfCode = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const g of loadGroups()) for (const c of g.members) m.set(c, g.id)
+    return m
+  }, [reloadKey])
+
+  // 基础统计（列入镇级/市级按集团折叠计数）
   const total = data.length
   const aboveScale = data.filter(r => r.isAboveScale).length
   const operating = data.filter(r => r.isOperating).length
-  const townLevel = data.filter(r => r.inTownLevel).length
-  const cityLevel = data.filter(r => r.inCityLevel).length
+  const townLevel = countCollapsed(data.filter(r => r.inTownLevel), groupOfCode)
+  const cityLevel = countCollapsed(data.filter(r => r.inCityLevel), groupOfCode)
 
-  // 按乡镇汇总
+  // 按乡镇汇总（市级/镇级按集团折叠计数）
   const townshipStats = useMemo(() => {
-    const map = new Map<string, { total: number; town: number; city: number; other: number; townExit: number; cityExit: number }>()
+    const map = new Map<string, { total: number; townRecs: ScreeningRecord[]; cityRecs: ScreeningRecord[]; other: number }>()
     for (const r of data) {
       const key = r.township || '未知'
-      const s = map.get(key) ?? { total: 0, town: 0, city: 0, other: 0, townExit: 0, cityExit: 0 }
+      const s = map.get(key) ?? { total: 0, townRecs: [], cityRecs: [], other: 0 }
       s.total++
-      if (r.inTownLevel) s.town++
-      if (r.inCityLevel) s.city++
+      if (r.inTownLevel) s.townRecs.push(r)
+      if (r.inCityLevel) s.cityRecs.push(r)
       if (r.inOther) s.other++
       map.set(key, s)
     }
     return Array.from(map.entries())
-      .map(([township, s]) => ({ township, ...s, townInStock: s.town - s.townExit, cityInStock: s.city - s.cityExit }))
+      .map(([township, s]) => ({ township, total: s.total, other: s.other, town: countCollapsed(s.townRecs, groupOfCode), city: countCollapsed(s.cityRecs, groupOfCode) }))
       .sort((a, b) => b.total - a.total)
-  }, [data])
+  }, [data, groupOfCode])
 
-  // 按行业汇总
+  // 按行业汇总（市级/镇级按集团折叠计数）
   const industryStats = useMemo(() => {
-    const map = new Map<string, { total: number; town: number; city: number; other: number }>()
+    const map = new Map<string, { total: number; townRecs: ScreeningRecord[]; cityRecs: ScreeningRecord[]; other: number }>()
     for (const r of data) {
       const key = r.industry || '未知'
-      const s = map.get(key) ?? { total: 0, town: 0, city: 0, other: 0 }
+      const s = map.get(key) ?? { total: 0, townRecs: [], cityRecs: [], other: 0 }
       s.total++
-      if (r.inTownLevel) s.town++
-      if (r.inCityLevel) s.city++
+      if (r.inTownLevel) s.townRecs.push(r)
+      if (r.inCityLevel) s.cityRecs.push(r)
       if (r.inOther) s.other++
       map.set(key, s)
     }
     return Array.from(map.entries())
-      .map(([industry, s]) => ({ industry, ...s }))
+      .map(([industry, s]) => ({ industry, total: s.total, other: s.other, town: countCollapsed(s.townRecs, groupOfCode), city: countCollapsed(s.cityRecs, groupOfCode) }))
       .sort((a, b) => b.total - a.total)
-  }, [data])
+  }, [data, groupOfCode])
 
   // 有时间节点提醒的企业（按企业聚合：只要存在提醒即列出，已超期的标红高亮）
   const reminderEnterprises = useMemo(() => {
