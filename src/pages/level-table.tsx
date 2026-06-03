@@ -70,6 +70,7 @@ import { getIndustries, getTownships } from '@/db/dict'
 import { loadScreening } from '@/db/screening-store'
 import { loadLevelExtras, saveLevelExtras, loadLevelExtraByCode } from '@/db/level-store'
 import { loadGroups, saveGroups as dbSaveGroups } from '@/db/group-store'
+import { loadLevelMembership } from '@/lib/level-timeline'
 import { type ScreeningRecord, getIndustryIcon } from './screening'
 
 export { loadGroups } // 兼容旧引用（如集团详情页）
@@ -96,6 +97,7 @@ export interface LevelRecord {
   progress: ProgressEntry[]
   status: LevelStatus
   reportDate: string
+  inStock: boolean // 当前是否在库（仍列入该级别）；false 表示曾列入但已被移除
 }
 
 export interface ProgressEntry {
@@ -106,7 +108,7 @@ export interface ProgressEntry {
 
 // ── Demo 扩展数据 ──────────────────────────────────
 
-const demoExtras: Record<string, Omit<LevelRecord, 'id' | 'creditCode' | 'companyName' | 'industry' | 'township' | 'status' | 'reportDate'>> = {
+const demoExtras: Record<string, Omit<LevelRecord, 'id' | 'creditCode' | 'companyName' | 'industry' | 'township' | 'status' | 'reportDate' | 'inStock'>> = {
   '1': {
     businessStatus: '正常经营，业务量同比增长15%',
     assetStatus: '总资产5200万元，固定资产占比40%',
@@ -190,12 +192,12 @@ const demoExtras: Record<string, Omit<LevelRecord, 'id' | 'creditCode' | 'compan
   },
 }
 
-const defaultExtra: Omit<LevelRecord, 'id' | 'creditCode' | 'companyName' | 'industry' | 'township' | 'status' | 'reportDate'> = {
+const defaultExtra: Omit<LevelRecord, 'id' | 'creditCode' | 'companyName' | 'industry' | 'township' | 'status' | 'reportDate' | 'inStock'> = {
   businessStatus: '—', assetStatus: '—', debtStatus: '—', staffStatus: '—',
   otherFeedback: '—', coordination: '—', progress: [],
 }
 
-export type LevelExtra = Omit<LevelRecord, 'id' | 'creditCode' | 'companyName' | 'industry' | 'township' | 'status' | 'reportDate'>
+export type LevelExtra = Omit<LevelRecord, 'id' | 'creditCode' | 'companyName' | 'industry' | 'township' | 'status' | 'reportDate' | 'inStock'>
 
 // 供企业详情页复用：按记录加载企业进展信息
 export function loadProgressInfo(id: string, creditCode: string): LevelExtra {
@@ -226,9 +228,16 @@ function loadScreeningData(): ScreeningRecord[] {
   return loadScreening()
 }
 
-function toLevelRecords(records: ScreeningRecord[], filterKey: 'inCityLevel' | 'inTownLevel' | 'inOther'): LevelRecord[] {
+function toLevelRecords(
+  records: ScreeningRecord[],
+  filterKey: 'inCityLevel' | 'inTownLevel' | 'inOther',
+  membership: { town: Set<string>; city: Set<string> },
+): LevelRecord[] {
+  const category = filterKey === 'inTownLevel' ? 'town' : filterKey === 'inCityLevel' ? 'city' : null
+  const memberSet = category ? membership[category] : null
   return records
-    .filter(r => r[filterKey])
+    // 当前在库（flag 为真）或曾经列入（时间轴有过该级别事件）的企业都纳入本表
+    .filter(r => r[filterKey] || (memberSet?.has(r.id) ?? false))
     .map(r => {
       const extra = demoExtras[r.id] ?? defaultExtra
       return {
@@ -237,6 +246,7 @@ function toLevelRecords(records: ScreeningRecord[], filterKey: 'inCityLevel' | '
         ...extra,
         status: deriveStatus(extra.progress),
         reportDate: r.reportDate,
+        inStock: !!r[filterKey],
       }
     })
 }
@@ -331,6 +341,14 @@ function createColumns(onViewProgress: (record: LevelRecord) => void, onViewDeta
       cell: ({ row }) => <span className='text-muted-foreground'>{row.original.isGroup ? '—' : row.getValue('township')}</span>,
     },
     {
+      header: '是否在库', accessorKey: 'inStock', enableSorting: false,
+      cell: ({ row }) => row.original.isGroup
+        ? <span className='text-muted-foreground'>—</span>
+        : row.original.inStock
+          ? <Badge className='rounded-sm px-1.5 bg-green-100 text-green-700 border-green-200'>在库</Badge>
+          : <Badge className='rounded-sm px-1.5 bg-gray-100 text-gray-500 border-gray-200'>不在库</Badge>,
+    },
+    {
       header: '经营情况', accessorKey: 'businessStatus',
       cell: ({ row }) => row.original.isGroup
         ? <span className='text-sm text-muted-foreground'>—</span>
@@ -376,7 +394,7 @@ export default function LevelTable({ title, filterKey }: {
 }) {
   const pageSize = 8
 
-  const baseData = useMemo(() => toLevelRecords(loadScreeningData(), filterKey), [filterKey])
+  const baseData = useMemo(() => toLevelRecords(loadScreeningData(), filterKey, loadLevelMembership()), [filterKey])
 
   // 从数据库加载扩展数据，合并到 baseData
   const [importedExtras, setImportedExtras] = useState<Record<string, Partial<LevelExtra>>>(() => loadLevelExtras(filterKey))
@@ -401,6 +419,7 @@ export default function LevelTable({ title, filterKey }: {
   })
   const [dateStart, setDateStart] = useState('')
   const [dateEnd, setDateEnd] = useState('')
+  const [stockFilter, setStockFilter] = useState<'all' | 'in' | 'out'>('all') // 在库筛选：全部 / 在库 / 不在库
   const industries = getIndustries()
   const townships = getTownships()
 
@@ -545,7 +564,7 @@ export default function LevelTable({ title, filterKey }: {
     creditCode: '', companyName: g.name, industry: '', township: '',
     businessStatus: '—', assetStatus: '—', debtStatus: '—', staffStatus: '—',
     otherFeedback: '—', coordination: '—', progress: [],
-    status: '正常' as LevelStatus, reportDate: '',
+    status: '正常' as LevelStatus, reportDate: '', inStock: true,
     isGroup: true, group: g,
   })), [groups])
 
@@ -555,8 +574,10 @@ export default function LevelTable({ title, filterKey }: {
     if (industry) result = result.filter(r => r.industry === industry)
     if (dateStart) result = result.filter(r => r.reportDate >= dateStart)
     if (dateEnd) result = result.filter(r => r.reportDate <= dateEnd)
+    if (stockFilter === 'in') result = result.filter(r => r.inStock)
+    else if (stockFilter === 'out') result = result.filter(r => !r.inStock)
     return [...groupRows, ...result]
-  }, [data, dateStart, dateEnd, columnFilters, memberCodes, groupRows])
+  }, [data, dateStart, dateEnd, columnFilters, memberCodes, groupRows, stockFilter])
 
   const pageStorageKey = 'level-page-index-' + filterKey
   const [pagination, setPagination] = useState<PaginationState>(() => {
@@ -623,6 +644,14 @@ export default function LevelTable({ title, filterKey }: {
             <SelectContent>
               <SelectItem value='all'>全部乡镇</SelectItem>
               {townships.map(item => <SelectItem key={item.id} value={item.name}>{item.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={stockFilter} onValueChange={v => setStockFilter(v as 'all' | 'in' | 'out')}>
+            <SelectTrigger className='w-28'><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value='all'>全部</SelectItem>
+              <SelectItem value='in'>在库</SelectItem>
+              <SelectItem value='out'>不在库</SelectItem>
             </SelectContent>
           </Select>
           <DatePicker value={dateStart} onChange={setDateStart} placeholder='开始日期' />

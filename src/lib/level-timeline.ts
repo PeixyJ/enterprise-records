@@ -39,6 +39,20 @@ function rowToEvent(r: Record<string, unknown>): LevelEvent {
   }
 }
 
+// 批量加载「曾经属于镇级/市级」的企业 record_id 集合：
+// 只要时间轴上出现过该类别的任意事件（加入或离开），即视为该企业属于对应级别表（可能当前不在库）
+export function loadLevelMembership(): { town: Set<string>; city: Set<string> } {
+  const rows = queryRows('SELECT DISTINCT record_id, type FROM level_event')
+  const town = new Set<string>()
+  const city = new Set<string>()
+  for (const r of rows) {
+    const id = r.record_id as string
+    if (eventCategory(r.type as LevelEventType) === 'town') town.add(id)
+    else city.add(id)
+  }
+  return { town, city }
+}
+
 export function loadLevelEvents(recordId: string): LevelEvent[] {
   return queryRows('SELECT * FROM level_event WHERE record_id = ? ORDER BY date, rowid', [recordId]).map(rowToEvent)
 }

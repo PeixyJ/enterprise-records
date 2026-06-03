@@ -32,7 +32,7 @@ import { loadScreening, loadDetail, updateScreeningLevels, type StoredDetail } f
 import { type ScreeningRecord, getIndustryIcon } from './screening'
 import { loadProgressInfo, type LevelExtra } from './level-table'
 import { type TimeNode, loadReminders, saveReminders, newNodeId, isOverdue } from '@/lib/reminders'
-import { type LevelEvent, type LevelEventType, LEVEL_EVENT_LABEL, loadLevelEvents, saveLevelEvents, newEventId, eventCategory, isLatestInCategory } from '@/lib/level-timeline'
+import { type LevelEvent, type LevelEventType, LEVEL_EVENT_LABEL, loadLevelEvents, saveLevelEvents, newEventId, eventCategory, isLatestInCategory, todayStr } from '@/lib/level-timeline'
 import { DatePicker } from '@/components/date-picker'
 
 // ── 数据类型 ──────────────────────────────────────
@@ -100,14 +100,24 @@ function toReportLogs(detail: StoredDetail | null): ReportLog[] {
 
 // ── 统计小卡片 ──────────────────────────────────────
 
-function StatCard({ icon: IconComponent, label, value, color }: {
+function StatCard({ icon: IconComponent, label, value, color, onClick, title }: {
   icon: React.ElementType
   label: string
   value: React.ReactNode
   color: string
+  onClick?: () => void
+  title?: string
 }) {
   return (
-    <div className='flex items-center gap-3 rounded-lg border px-4 py-3'>
+    <div
+      className={cn('flex items-center gap-3 rounded-lg border px-4 py-3',
+        onClick && 'cursor-pointer transition-colors hover:bg-muted/50 hover:border-primary/40')}
+      onClick={onClick}
+      title={title}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } } : undefined}
+    >
       <div className={cn('flex size-9 items-center justify-center rounded-lg', color)}>
         <IconComponent className='size-4' />
       </div>
@@ -234,6 +244,17 @@ export default function ScreeningDetailPage() {
   const handleDeleteEvent = (eventId: string) => {
     persistTimeline(timelineEvents.filter(e => e.id !== eventId))
     if (editingEventId === eventId) setEditingEventId(null)
+  }
+  // 点击「列入镇级 / 列入市级」统计卡：直接切换列入状态，写库并在时间轴追加一条对应事件
+  const toggleLevel = (category: 'town' | 'city') => {
+    if (!id || !basicData) return
+    const next = !(category === 'town' ? basicData.inTownLevel : basicData.inCityLevel)
+    const type: LevelEventType = category === 'town'
+      ? (next ? 'joinTown' : 'leaveTown')
+      : (next ? 'joinCity' : 'leaveCity')
+    persistTimeline([...timelineEvents, { id: newEventId(), type, date: todayStr() }])
+    updateScreeningLevels(id, category === 'town' ? { inTownLevel: next } : { inCityLevel: next })
+    setBasicData(b => (b ? (category === 'town' ? { ...b, inTownLevel: next } : { ...b, inCityLevel: next }) : b))
   }
   const startEditEvent = (e: LevelEvent) => {
     setEditingEventId(e.id)
@@ -363,8 +384,8 @@ export default function ScreeningDetailPage() {
       <div className='grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6'>
         <StatCard icon={HashIcon} label='上报次数' value={`${record.reportCount} 次`} color='bg-blue-100 text-blue-600' />
         <StatCard icon={ActivityIcon} label='是否正常运营' value={<BoolValue value={basicData.isOperating} />} color='bg-emerald-100 text-emerald-600' />
-        <StatCard icon={BuildingIcon} label='列入镇级' value={<BoolValue value={basicData.inTownLevel} />} color='bg-amber-100 text-amber-600' />
-        <StatCard icon={LandmarkIcon} label='列入市级' value={<BoolValue value={basicData.inCityLevel} />} color='bg-purple-100 text-purple-600' />
+        <StatCard icon={BuildingIcon} label='列入镇级' value={<BoolValue value={basicData.inTownLevel} />} color='bg-amber-100 text-amber-600' onClick={() => toggleLevel('town')} title={basicData.inTownLevel ? '点击移除镇级' : '点击列入镇级'} />
+        <StatCard icon={LandmarkIcon} label='列入市级' value={<BoolValue value={basicData.inCityLevel} />} color='bg-purple-100 text-purple-600' onClick={() => toggleLevel('city')} title={basicData.inCityLevel ? '点击移除市级' : '点击列入市级'} />
       </div>
 
       {/* Tab 区域 */}
