@@ -30,6 +30,15 @@ export function todayStr(): string {
   return `${y}-${m}-${day}`
 }
 
+// 当前时分秒 HH:mm:ss
+export function nowTimeStr(): string {
+  const d = new Date()
+  const h = String(d.getHours()).padStart(2, '0')
+  const m = String(d.getMinutes()).padStart(2, '0')
+  const s = String(d.getSeconds()).padStart(2, '0')
+  return `${h}:${m}:${s}`
+}
+
 function rowToEvent(r: Record<string, unknown>): LevelEvent {
   return {
     id: r.id as string,
@@ -75,6 +84,18 @@ export function eventCategory(type: LevelEventType): 'town' | 'city' {
 // 在同类（镇级/市级）事件中，给定日期是否为最新（不存在比它更晚的同类事件，含并列最新）
 export function isLatestInCategory(events: LevelEvent[], category: 'town' | 'city', date: string): boolean {
   return !events.some(e => eventCategory(e.type) === category && e.date > date)
+}
+
+// 取某类别（镇级/市级）最新一条事件所代表的列入状态：
+// 返回 true（最新为加入）/ false（最新为离开）/ undefined（该类别已无任何事件）
+export function latestStatusInCategory(events: LevelEvent[], category: 'town' | 'city'): boolean | undefined {
+  let latest: LevelEvent | undefined
+  for (const e of events) {
+    if (eventCategory(e.type) !== category) continue
+    if (!latest || e.date >= latest.date) latest = e // 并列最新时取数组后出现的一条
+  }
+  if (!latest) return undefined
+  return latest.type === 'joinTown' || latest.type === 'joinCity'
 }
 
 // 追加一条事件（供初筛表切换列入镇级/市级时自动记录）

@@ -32,7 +32,7 @@ import { loadScreening, loadDetail, updateScreeningLevels, type StoredDetail } f
 import { type ScreeningRecord, getIndustryIcon } from './screening'
 import { loadProgressInfo, type LevelExtra } from './level-table'
 import { type TimeNode, loadReminders, saveReminders, newNodeId, isOverdue } from '@/lib/reminders'
-import { type LevelEvent, type LevelEventType, LEVEL_EVENT_LABEL, loadLevelEvents, saveLevelEvents, newEventId, eventCategory, isLatestInCategory, todayStr } from '@/lib/level-timeline'
+import { type LevelEvent, type LevelEventType, LEVEL_EVENT_LABEL, loadLevelEvents, saveLevelEvents, newEventId, eventCategory, latestStatusInCategory, todayStr, nowTimeStr } from '@/lib/level-timeline'
 import { DatePicker } from '@/components/date-picker'
 
 // ── 数据类型 ──────────────────────────────────────
@@ -217,12 +217,12 @@ export default function ScreeningDetailPage() {
     setTimelineEvents(sorted)
     if (id) saveLevelEvents(id, sorted)
   }
-  // 若新增节点是同类（镇级/市级）中时间最新的一条，则反向回写企业的「列入镇级/市级」状态；否则不动
-  const syncLevelFromEvent = (ev: LevelEvent) => {
+  // 依据某类别（镇级/市级）剩余事件中「最新一条」重算企业列入状态：
+  // 最新为加入→列入，最新为离开→移除，该类别已无事件→不纳入（false）。
+  // 增/删/改事件后调用：新增非最新或删除非最新时，最新未变，状态自然保持不变。
+  const syncLevelFromCategory = (category: 'town' | 'city', events: LevelEvent[]) => {
     if (!id || !basicData) return
-    const category = eventCategory(ev.type)
-    if (!isLatestInCategory(timelineEvents, category, ev.date)) return
-    const included = ev.type === 'joinTown' || ev.type === 'joinCity'
+    const included = latestStatusInCategory(events, category) ?? false
     if (category === 'town') {
       if (basicData.inTownLevel === included) return
       updateScreeningLevels(id, { inTownLevel: included })
@@ -235,15 +235,21 @@ export default function ScreeningDetailPage() {
   }
   const handleAddEvent = () => {
     if (!newEventDate) return
-    const ev: LevelEvent = { id: newEventId(), type: newEventType, date: newEventDate, note: newEventNote.trim() || undefined }
-    syncLevelFromEvent(ev)
-    persistTimeline([...timelineEvents, ev])
+    if (newEventDate > todayStr()) return // 不允许添加晚于今天的节点
+    // 手动添加：在所选日期上叠加当前的时分秒，便于同日多条节点按添加先后排序
+    const ev: LevelEvent = { id: newEventId(), type: newEventType, date: `${newEventDate} ${nowTimeStr()}`, note: newEventNote.trim() || undefined }
+    const next = [...timelineEvents, ev]
+    persistTimeline(next)
+    syncLevelFromCategory(eventCategory(ev.type), next)
     setNewEventDate('')
     setNewEventNote('')
   }
   const handleDeleteEvent = (eventId: string) => {
-    persistTimeline(timelineEvents.filter(e => e.id !== eventId))
+    const removed = timelineEvents.find(e => e.id === eventId)
+    const next = timelineEvents.filter(e => e.id !== eventId)
+    persistTimeline(next)
     if (editingEventId === eventId) setEditingEventId(null)
+    if (removed) syncLevelFromCategory(eventCategory(removed.type), next)
   }
   // 点击「列入镇级 / 列入市级」统计卡：直接切换列入状态，写库并在时间轴追加一条对应事件
   const toggleLevel = (category: 'town' | 'city') => {
@@ -258,13 +264,19 @@ export default function ScreeningDetailPage() {
   }
   const startEditEvent = (e: LevelEvent) => {
     setEditingEventId(e.id)
-    setEditEventDate(e.date)
+    setEditEventDate(e.date.slice(0, 10)) // 仅日期部分交给 DatePicker，时分秒在保存时保留
     setEditEventNote(e.note ?? '')
   }
   const saveEditEvent = () => {
     if (!editingEventId || !editEventDate) return
-    persistTimeline(timelineEvents.map(e => e.id === editingEventId ? { ...e, date: editEventDate, note: editEventNote.trim() || undefined } : e))
+    const edited = timelineEvents.find(e => e.id === editingEventId)
+    // 保留原节点的时分秒（若有），仅替换日期部分
+    const origTime = edited && edited.date.length > 10 ? edited.date.slice(10) : ''
+    const newDate = editEventDate.slice(0, 10) + origTime
+    const next = timelineEvents.map(e => e.id === editingEventId ? { ...e, date: newDate, note: editEventNote.trim() || undefined } : e)
+    persistTimeline(next)
     setEditingEventId(null)
+    if (edited) syncLevelFromCategory(eventCategory(edited.type), next)
   }
   const [reportDetailLog, setReportDetailLog] = useState<ReportLog | null>(null)
 
@@ -702,11 +714,14 @@ export default function ScreeningDetailPage() {
                   </Select>
                   <DatePicker value={newEventDate} onChange={setNewEventDate} className='w-40' placeholder='时间' />
                   <Input placeholder='注释（可选）' className='flex-1 min-w-40' value={newEventNote} onChange={e => setNewEventNote(e.target.value)} />
-                  <Button onClick={handleAddEvent} disabled={!newEventDate}>
+                  <Button onClick={handleAddEvent} disabled={!newEventDate || newEventDate > todayStr()}>
                     <PlusIcon className='size-4' />
                     添加
                   </Button>
                 </div>
+                {newEventDate > todayStr() && (
+                  <p className='text-sm text-red-500'>节点时间不能晚于今天</p>
+                )}
               </div>
             </CardContent>
           </Card>
