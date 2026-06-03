@@ -6,7 +6,6 @@ import {
   LandmarkIcon,
   FileTextIcon,
   TrendingUpIcon,
-  TrendingDownIcon,
   UsersIcon,
   FactoryIcon,
   BellIcon,
@@ -197,27 +196,31 @@ export default function DashboardPage() {
       .sort((a, b) => b.total - a.total)
   }, [data])
 
-  // 超期时间节点提醒
-  const overdueReminders = useMemo(() => {
+  // 有时间节点提醒的企业（按企业聚合：只要存在提醒即列出，已超期的标红高亮）
+  const reminderEnterprises = useMemo(() => {
     const all = loadAllReminders()
     const recById = new Map(data.map(r => [r.id, r]))
-    const rows: { recordId: string; companyName: string; industry: string; township: string; description: string; date: string }[] = []
+    const rows: { recordId: string; companyName: string; industry: string; township: string; total: number; overdue: number; nearestDate: string }[] = []
     for (const recordId of Object.keys(all)) {
       const rec = recById.get(recordId)
       if (!rec) continue // 对应企业已不存在（被删除）则不显示
-      for (const node of all[recordId]) {
-        if (!isOverdue(node.date)) continue
-        rows.push({
-          recordId,
-          companyName: rec.companyName,
-          industry: rec.industry,
-          township: rec.township,
-          description: node.description,
-          date: node.date,
-        })
-      }
+      const nodes = all[recordId]
+      if (!nodes.length) continue
+      const overdue = nodes.filter(n => isOverdue(n.date)).length
+      const nearestDate = [...nodes].map(n => n.date).sort((a, b) => a.localeCompare(b))[0] ?? ''
+      rows.push({
+        recordId,
+        companyName: rec.companyName,
+        industry: rec.industry,
+        township: rec.township,
+        total: nodes.length,
+        overdue,
+        nearestDate,
+      })
     }
-    return rows.sort((a, b) => a.date.localeCompare(b.date))
+    // 有超期的企业排在前面，其次按最近节点时间升序
+    return rows.sort((a, b) =>
+      (b.overdue > 0 ? 1 : 0) - (a.overdue > 0 ? 1 : 0) || a.nearestDate.localeCompare(b.nearestDate))
   }, [data])
 
   return (
@@ -239,6 +242,50 @@ export default function DashboardPage() {
       </div>
 
       <div className='p-6 space-y-6'>
+        {/* 时间节点异常提醒企业 */}
+        {reminderEnterprises.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className='flex items-center gap-2'>
+                <BellIcon className='size-5 text-red-500' />
+                时间节点异常提醒
+                <Badge className='rounded-full bg-red-100 text-red-700'>{reminderEnterprises.length}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>企业名称</TableHead>
+                    <TableHead>行业</TableHead>
+                    <TableHead>乡镇</TableHead>
+                    <TableHead>提醒节点</TableHead>
+                    <TableHead>最近节点</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {reminderEnterprises.map(r => (
+                    <TableRow key={r.recordId} className={cn(r.overdue > 0 && 'bg-red-50/50')}>
+                      <TableCell className='font-medium max-w-40 truncate'>
+                        <Link to={`/app/screening/${r.recordId}`} className='text-primary hover:underline'>{r.companyName}</Link>
+                      </TableCell>
+                      <TableCell className='text-muted-foreground max-w-24 truncate'>{r.industry}</TableCell>
+                      <TableCell className='text-muted-foreground max-w-28 truncate'>{r.township}</TableCell>
+                      <TableCell>
+                        <span className='inline-flex items-center gap-1.5'>
+                          <Badge variant='outline' className='rounded-sm'>{r.total} 个</Badge>
+                          {r.overdue > 0 && <Badge className='rounded-sm bg-red-100 text-red-700'>{r.overdue} 超期</Badge>}
+                        </span>
+                      </TableCell>
+                      <TableCell className={cn(r.overdue > 0 ? 'text-red-600' : 'text-muted-foreground')}>{r.nearestDate || '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+
         {/* 统计卡片 */}
         <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4'>
           <StatCard title='初筛信息条数' value={total} icon={FileTextIcon} color='bg-blue-100 text-blue-600' to='/app/screening' />
@@ -375,84 +422,6 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* 超期时间节点提醒 */}
-        {overdueReminders.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className='flex items-center gap-2'>
-                <BellIcon className='size-5 text-red-500' />
-                超期时间节点提醒
-                <Badge className='rounded-full bg-red-100 text-red-700'>{overdueReminders.length}</Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>企业名称</TableHead>
-                    <TableHead>行业</TableHead>
-                    <TableHead>乡镇</TableHead>
-                    <TableHead>提醒描述</TableHead>
-                    <TableHead>时间节点</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {overdueReminders.map((r, i) => (
-                    <TableRow key={r.recordId + '-' + i} className='bg-red-50/50'>
-                      <TableCell className='font-medium max-w-40 truncate'>
-                        <Link to={`/app/screening/${r.recordId}`} className='text-primary hover:underline'>{r.companyName}</Link>
-                      </TableCell>
-                      <TableCell className='text-muted-foreground max-w-24 truncate'>{r.industry}</TableCell>
-                      <TableCell className='text-muted-foreground max-w-28 truncate'>{r.township}</TableCell>
-                      <TableCell className='max-w-48 truncate'>{r.description}</TableCell>
-                      <TableCell className='text-red-600'>{r.date}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* 异常运营企业列表 */}
-        {data.filter(r => !r.isOperating).length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className='flex items-center gap-2'>
-                <TrendingDownIcon className='size-5 text-red-500' />
-                异常运营企业
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>企业名称</TableHead>
-                    <TableHead>行业</TableHead>
-                    <TableHead>乡镇</TableHead>
-                    <TableHead>规上企业</TableHead>
-                    <TableHead>上报时间</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.filter(r => !r.isOperating).map(r => (
-                    <TableRow key={r.id}>
-                      <TableCell className='font-medium max-w-40 truncate'>{r.companyName}</TableCell>
-                      <TableCell className='text-muted-foreground max-w-24 truncate'>{r.industry}</TableCell>
-                      <TableCell className='text-muted-foreground max-w-28 truncate'>{r.township}</TableCell>
-                      <TableCell>
-                        <Badge className={cn('rounded-sm px-1.5', r.isAboveScale
-                          ? 'bg-green-100 text-green-800' : 'bg-muted text-muted-foreground'
-                        )}>{r.isAboveScale ? '是' : '否'}</Badge>
-                      </TableCell>
-                      <TableCell className='text-muted-foreground'>{r.reportDate}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
       </div>
 
       {/* 一键导入弹窗 */}

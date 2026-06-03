@@ -1,5 +1,5 @@
 import type { ScreeningRecord } from '@/pages/screening'
-import { queryRows, runWrite } from './database'
+import { queryRows, runWrite, runSQL } from './database'
 
 // ── 明细类型（税务 / 人社 / 电力 / 水务 / 金融办 / 上报记录）──
 export interface ReportSourceItem {
@@ -59,6 +59,17 @@ export function saveScreening(records: ScreeningRecord[]): void {
       )
     })
   })
+}
+
+/** 仅更新某企业的「列入镇级 / 列入市级」状态（供时间轴回写使用，避免整表重写） */
+export function updateScreeningLevels(id: string, patch: { inTownLevel?: boolean; inCityLevel?: boolean }): void {
+  const sets: string[] = []
+  const vals: unknown[] = []
+  if (patch.inTownLevel !== undefined) { sets.push('in_town_level = ?'); vals.push(patch.inTownLevel ? 1 : 0) }
+  if (patch.inCityLevel !== undefined) { sets.push('in_city_level = ?'); vals.push(patch.inCityLevel ? 1 : 0) }
+  if (sets.length === 0) return
+  vals.push(id)
+  runSQL(`UPDATE screening SET ${sets.join(', ')} WHERE id = ?`, vals)
 }
 
 // ── 明细数据 ────────────────────────────────────────

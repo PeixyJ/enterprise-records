@@ -53,6 +53,16 @@ export function saveLevelEvents(recordId: string, events: LevelEvent[]) {
   })
 }
 
+// 事件所属类别：镇级 / 市级
+export function eventCategory(type: LevelEventType): 'town' | 'city' {
+  return type === 'joinTown' || type === 'leaveTown' ? 'town' : 'city'
+}
+
+// 在同类（镇级/市级）事件中，给定日期是否为最新（不存在比它更晚的同类事件，含并列最新）
+export function isLatestInCategory(events: LevelEvent[], category: 'town' | 'city', date: string): boolean {
+  return !events.some(e => eventCategory(e.type) === category && e.date > date)
+}
+
 // 追加一条事件（供初筛表切换列入镇级/市级时自动记录）
 export function addLevelEvent(recordId: string, type: LevelEventType, date: string) {
   runSQL('INSERT INTO level_event (id, record_id, type, date, note) VALUES (?,?,?,?,?)',

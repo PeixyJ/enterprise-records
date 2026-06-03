@@ -28,11 +28,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { loadScreening, loadDetail, type StoredDetail } from '@/db/screening-store'
+import { loadScreening, loadDetail, updateScreeningLevels, type StoredDetail } from '@/db/screening-store'
 import { type ScreeningRecord, getIndustryIcon } from './screening'
 import { loadProgressInfo, type LevelExtra } from './level-table'
 import { type TimeNode, loadReminders, saveReminders, newNodeId, isOverdue } from '@/lib/reminders'
-import { type LevelEvent, type LevelEventType, LEVEL_EVENT_LABEL, loadLevelEvents, saveLevelEvents, newEventId } from '@/lib/level-timeline'
+import { type LevelEvent, type LevelEventType, LEVEL_EVENT_LABEL, loadLevelEvents, saveLevelEvents, newEventId, eventCategory, isLatestInCategory } from '@/lib/level-timeline'
 import { DatePicker } from '@/components/date-picker'
 
 // ── 数据类型 ──────────────────────────────────────
@@ -207,9 +207,27 @@ export default function ScreeningDetailPage() {
     setTimelineEvents(sorted)
     if (id) saveLevelEvents(id, sorted)
   }
+  // 若新增节点是同类（镇级/市级）中时间最新的一条，则反向回写企业的「列入镇级/市级」状态；否则不动
+  const syncLevelFromEvent = (ev: LevelEvent) => {
+    if (!id || !basicData) return
+    const category = eventCategory(ev.type)
+    if (!isLatestInCategory(timelineEvents, category, ev.date)) return
+    const included = ev.type === 'joinTown' || ev.type === 'joinCity'
+    if (category === 'town') {
+      if (basicData.inTownLevel === included) return
+      updateScreeningLevels(id, { inTownLevel: included })
+      setBasicData(b => (b ? { ...b, inTownLevel: included } : b))
+    } else {
+      if (basicData.inCityLevel === included) return
+      updateScreeningLevels(id, { inCityLevel: included })
+      setBasicData(b => (b ? { ...b, inCityLevel: included } : b))
+    }
+  }
   const handleAddEvent = () => {
     if (!newEventDate) return
-    persistTimeline([...timelineEvents, { id: newEventId(), type: newEventType, date: newEventDate, note: newEventNote.trim() || undefined }])
+    const ev: LevelEvent = { id: newEventId(), type: newEventType, date: newEventDate, note: newEventNote.trim() || undefined }
+    syncLevelFromEvent(ev)
+    persistTimeline([...timelineEvents, ev])
     setNewEventDate('')
     setNewEventNote('')
   }
